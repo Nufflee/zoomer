@@ -104,6 +104,22 @@ pub const WGL_CONTEXT_MINOR_VERSION_ARB: i32 = 0x2092;
 pub const WGL_CONTEXT_PROFILE_MASK_ARB: i32 = 0x9126;
 pub const WGL_CONTEXT_CORE_PROFILE_BIT_ARB: i32 = 0x00000001;
 
+pub const WGL_CONTEXT_FLAGS_ARB: i32 = 0x2094;
+pub const WGL_CONTEXT_DEBUG_BIT_ARB: i32 = 0x0001;
+
+// glDebugMessageCallback
+pub const GL_DEBUG_TYPE_ERROR: GLenum = 0x824C;
+pub const GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: GLenum = 0x824D;
+pub const GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: GLenum = 0x824E;
+pub const GL_DEBUG_TYPE_PORTABILITY: GLenum = 0x824F;
+pub const GL_DEBUG_TYPE_PERFORMANCE: GLenum = 0x8250;
+pub const GL_DEBUG_TYPE_OTHER: GLenum = 0x8251;
+
+pub const GL_DEBUG_SEVERITY_HIGH: GLenum = 0x9146;
+pub const GL_DEBUG_SEVERITY_MEDIUM: GLenum = 0x9147;
+pub const GL_DEBUG_SEVERITY_LOW: GLenum = 0x9148;
+pub const GL_DEBUG_SEVERITY_NOTIFICATION: GLenum = 0x826B;
+
 // https://www.khronos.org/registry/OpenGL/api/GL/glcorearb.h
 extern "C" {
     pub fn glGetString(name: GLenum) -> *const GLubyte;
@@ -233,6 +249,22 @@ load_opengl_function!(
         infoLog: *mut GLchar,
     ),
     glGetShaderInfoLog
+);
+
+#[allow(clippy::upper_case_acronyms)]
+type DEBUGPROC = unsafe extern "C" fn(
+    source: GLenum,
+    type_: GLenum,
+    id: GLuint,
+    severity: GLenum,
+    length: GLsizei,
+    message: *const GLchar,
+    userParam: *mut GLvoid,
+);
+
+load_opengl_function!(
+    unsafe extern "C" fn(callback: DEBUGPROC, userParam: *mut c_void),
+    glDebugMessageCallback
 );
 
 // https://www.khronos.org/registry/OpenGL/extensions/ARB/WGL_ARB_create_context.txt

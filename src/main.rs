@@ -1,3 +1,4 @@
+mod console;
 mod ffi;
 mod gl;
 mod screenshot;
@@ -20,8 +21,8 @@ use winapi::{
         windowsx::{GET_X_LPARAM, GET_Y_LPARAM},
     },
     um::{
-        libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount, wingdi::*, winnt::HANDLE,
-        winuser::*,
+        errhandlingapi::GetLastError, libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount,
+        wingdi::*, winnt::HANDLE, winuser::*,
     },
 };
 
@@ -66,6 +67,58 @@ unsafe extern "system" fn window_proc(
     0
 }
 
+unsafe extern "C" fn gl_message_callback(
+    _source: GLenum,
+    type_: GLenum,
+    _id: GLuint,
+    severity: GLenum,
+    _length: GLsizei,
+    message: *const GLchar,
+    _user_param: *mut GLvoid,
+) {
+    if severity == GL_DEBUG_SEVERITY_NOTIFICATION {
+        return;
+    }
+
+    let message = CStr::from_ptr(message);
+    let message = message.to_string_lossy();
+
+    use console::{Color, SimpleColor};
+
+    fn type_to_str(type_: GLenum) -> &'static str {
+        match type_ {
+            GL_DEBUG_TYPE_ERROR => "ERROR",
+            GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR => "DEPRECATED BEHAVIOR",
+            GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR => "UNDEFINED BEHAVIOR",
+            GL_DEBUG_TYPE_PORTABILITY => "PORTABILITY",
+            GL_DEBUG_TYPE_PERFORMANCE => "PERFORMANCE",
+            GL_DEBUG_TYPE_OTHER => "OTHER",
+            _ => unreachable!(),
+        }
+    }
+
+    fn severity_to_color(severity: GLenum) -> SimpleColor {
+        match severity {
+            GL_DEBUG_SEVERITY_HIGH => SimpleColor::Red,
+            GL_DEBUG_SEVERITY_MEDIUM => SimpleColor::Yellow,
+            GL_DEBUG_SEVERITY_LOW => SimpleColor::White,
+            GL_DEBUG_SEVERITY_NOTIFICATION => SimpleColor::White,
+            _ => unreachable!(),
+        }
+    }
+
+    let color = severity_to_color(severity);
+
+    console::writeln(
+        console::text(format!(
+            "OpenGL message [{}]: {}",
+            type_to_str(type_),
+            message
+        ))
+        .foreground(Color::Simple(color)),
+    );
+}
+
 fn is_wgl_extension_supported(hdc: HDC, extension_name: &str) -> bool {
     let extensions = unsafe {
         let extensions = CStr::from_ptr(wglGetExtensionsStringARB(hdc))
@@ -83,6 +136,8 @@ const HEIGHT: u32 = 1080;
 
 fn main() {
     let instance = unsafe { GetModuleHandleA(std::ptr::null()) };
+
+    console::init();
 
     assert!(!instance.is_null());
 
@@ -149,14 +204,6 @@ fn main() {
 
         assert!(SetPixelFormat(hdc, format_index, &format_descriptor) != 0);
 
-        #[rustfmt::skip]
-        let attribs = [
-            WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-            WGL_CONTEXT_MINOR_VERSION_ARB, 2,
-            WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-            0
-        ];
-
         // Reference: https://github.com/glfw/glfw/blob/master/src/wgl_context.c#L535
         // Create and bind a dummy OpenGL context so we can load extension functions.
         let dummy_context = wglCreateContext(hdc);
@@ -165,6 +212,15 @@ fn main() {
         if !is_wgl_extension_supported(hdc, "WGL_ARB_create_context_profile") {
             panic!("`WGL_ARB_create_context_profile` extension not supported");
         }
+
+        #[rustfmt::skip]
+        let attribs = [
+            WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+            WGL_CONTEXT_MINOR_VERSION_ARB, 2,
+            WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
+            WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+            0 // null-terminated
+        ];
 
         let opengl_handle = wglCreateContextAttribsARB(hdc, std::ptr::null_mut(), attribs.as_ptr());
         assert!(!opengl_handle.is_null());
@@ -185,6 +241,8 @@ fn main() {
         );
 
         glClearColor(0.5, 0.5, 0.5, 1.0);
+
+        glDebugMessageCallback(gl_message_callback, std::ptr::null_mut());
     }
 
     #[rustfmt::skip]
@@ -457,21 +515,14 @@ fn main() {
     let start_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
     let start_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
 
+    let start = std::time::Instant::now();
+
     let screenshot = take_screenshot(std::ptr::null_mut(), start_x, start_y, width, height);
 
-    /*
-    stbi_write_png(
-        c_str!("rust_window.png"),
-        width as i32,
-        height as i32,
-        4,
-        screenshot.pixel_bytes(),
-        screenshot.stride() as i32,
-    )
-    .expect(".png writing failed");
-    */
-
-    println!("Screenshot taken!");
+    println!(
+        "Screenshot taken in {} seconds!",
+        start.elapsed().as_secs_f32()
+    );
 
     let texture = unsafe {
         let mut texture = 0;
@@ -482,7 +533,7 @@ fn main() {
     };
 
     println!(
-        "Screenshot: {}x{} ({})",
+        "Screenshot: {}x{} (AR = {})",
         screenshot.width(),
         screenshot.height(),
         screenshot.width() as f32 / screenshot.height() as f32
@@ -551,16 +602,6 @@ fn main() {
             glUseProgram(0);
             glBindVertexArray(0);
             glBindTexture(GL_TEXTURE_2D, 0);
-
-            loop {
-                let error = glGetError();
-
-                if error != GL_NO_ERROR {
-                    println!("OpenGL error: {}", error);
-                } else {
-                    break;
-                }
-            }
 
             assert!(SwapBuffers(hdc) != 0);
         }
