@@ -8,6 +8,7 @@ use std::os::raw::c_char;
 use winapi::shared::windef::{HDC, HGLRC};
 use winapi::um::wingdi::wglGetProcAddress;
 
+// TODO: Make this generate functions instead for better autocomplete
 macro_rules! load_opengl_function {
     ($type:ty, $name:ident) => {
         load_opengl_function!(
@@ -43,6 +44,9 @@ pub type GLchar = c_char;
 // glGetString
 pub const GL_VERSION: GLenum = 0x1F02;
 
+// glGetError
+pub const GL_NO_ERROR: GLenum = 0;
+
 // glClear
 pub const GL_COLOR_BUFFER_BIT: GLbitfield = 0x00004000;
 pub const GL_DEPTH_BUFFER_BIT: GLbitfield = 0x00000100;
@@ -50,6 +54,7 @@ pub const GL_STENCIL_BUFFER_BIT: GLbitfield = 0x00000400;
 
 // glBindBuffer
 pub const GL_ARRAY_BUFFER: GLenum = 0x8892;
+pub const GL_ELEMENT_ARRAY_BUFFER: GLenum = 0x8893;
 
 // glBufferData
 pub const GL_STATIC_DRAW: GLenum = 0x88E4;
@@ -69,6 +74,29 @@ pub const GL_COMPILE_STATUS: GLenum = 0x8B81;
 // glGetProgramiv
 pub const GL_LINK_STATUS: GLenum = 0x8B82;
 
+// glBindTexture
+pub const GL_TEXTURE_2D: GLenum = 0x0DE1;
+
+// glTexImage2D
+pub const GL_UNSIGNED_BYTE: GLenum = 0x1401;
+
+pub const GL_RGB: GLint = 0x1907;
+pub const GL_RGBA: GLint = 0x1908;
+
+// glTextureParameteri
+pub const GL_TEXTURE_MAG_FILTER: GLenum = 0x2800;
+pub const GL_TEXTURE_MIN_FILTER: GLenum = 0x2801;
+pub const GL_TEXTURE_WRAP_S: GLenum = 0x2802;
+pub const GL_TEXTURE_WRAP_T: GLenum = 0x2803;
+
+pub const GL_LINEAR: GLint = 0x2601;
+pub const GL_LINEAR_MIPMAP_LINEAR: GLint = 0x2703;
+
+pub const GL_CLAMP_TO_EDGE: GLint = 0x812F;
+
+// glActiveTexture
+pub const GL_TEXTURE0: GLenum = 0x84C0;
+
 // wglCreateContextAttribsARB
 pub const WGL_CONTEXT_MAJOR_VERSION_ARB: i32 = 0x2091;
 pub const WGL_CONTEXT_MINOR_VERSION_ARB: i32 = 0x2092;
@@ -79,11 +107,25 @@ pub const WGL_CONTEXT_CORE_PROFILE_BIT_ARB: i32 = 0x00000001;
 // https://www.khronos.org/registry/OpenGL/api/GL/glcorearb.h
 extern "C" {
     pub fn glGetString(name: GLenum) -> *const GLubyte;
+    pub fn glGetError() -> GLenum;
 
     pub fn glClearColor(red: GLclampf, green: GLclampf, blue: GLclampf, alpha: GLclampf);
     pub fn glClear(mask: GLbitfield);
 
     pub fn glViewport(x: GLint, y: GLint, width: GLsizei, height: GLsizei);
+
+    pub fn glTexImage2D(
+        target: GLenum,
+        level: GLint,
+        internalFormat: GLint,
+        width: GLsizei,
+        height: GLsizei,
+        border: GLint,
+        format: GLenum,
+        type_: GLenum,
+        pixels: *const GLvoid,
+    );
+    pub fn glTexParameteri(target: GLenum, pname: GLenum, param: GLint);
 }
 
 load_opengl_function!(
@@ -123,6 +165,10 @@ load_opengl_function!(
     glDrawArrays
 );
 load_opengl_function!(
+    unsafe extern "C" fn(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const GLvoid),
+    glDrawElements
+);
+load_opengl_function!(
     unsafe extern "C" fn(shaderType: GLenum) -> GLuint,
     glCreateShader
 );
@@ -156,6 +202,10 @@ load_opengl_function!(
     glGetUniformLocation
 );
 load_opengl_function!(
+    unsafe extern "C" fn(location: GLint, v0: GLint),
+    glUniform1i
+);
+load_opengl_function!(
     unsafe extern "C" fn(
         location: GLint,
         count: GLsizei,
@@ -164,7 +214,26 @@ load_opengl_function!(
     ),
     glUniformMatrix4fv
 );
-load_opengl_function!(extern "C" fn(cap: GLenum), glEanble);
+load_opengl_function!(unsafe extern "C" fn(cap: GLenum), glEanble);
+load_opengl_function!(
+    unsafe extern "C" fn(n: GLsizei, textures: *mut GLuint),
+    glGenTextures
+);
+load_opengl_function!(
+    unsafe extern "C" fn(target: GLenum, texture: GLuint),
+    glBindTexture
+);
+load_opengl_function!(unsafe extern "C" fn(texture: GLenum), glActiveTexture);
+load_opengl_function!(unsafe extern "C" fn(target: GLenum), glGenerateMipmap);
+load_opengl_function!(
+    unsafe extern "C" fn(
+        shader: GLuint,
+        maxLength: GLsizei,
+        length: *mut GLsizei,
+        infoLog: *mut GLchar,
+    ),
+    glGetShaderInfoLog
+);
 
 // https://www.khronos.org/registry/OpenGL/extensions/ARB/WGL_ARB_create_context.txt
 load_opengl_function!(

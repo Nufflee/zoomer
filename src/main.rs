@@ -11,7 +11,7 @@ use ffi::{c_str, c_str_ptr};
 use gl::*;
 use screenshot::take_screenshot;
 
-use nalgebra::Matrix4;
+use nalgebra::{Matrix3, Matrix4, Vector2, Vector3};
 use stb::image_write::stbi_write_png;
 use winapi::{
     shared::{
@@ -25,6 +25,11 @@ use winapi::{
     },
 };
 
+struct Zoomer {
+    pub client_width: u16,
+    pub client_height: u16,
+}
+
 unsafe extern "system" fn window_proc(
     handle: HWND,
     message: u32,
@@ -32,6 +37,8 @@ unsafe extern "system" fn window_proc(
     l_param: isize,
 ) -> LRESULT {
     use winapi::um::winuser::*;
+
+    let mut zoomer = &mut *(GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Zoomer);
 
     match message {
         WM_MOUSEWHEEL => {
@@ -48,7 +55,9 @@ unsafe extern "system" fn window_proc(
             let width = LOWORD(l_param as DWORD);
             let height = HIWORD(l_param as DWORD);
 
-            println!("width = {}, height = {}", width, height);
+            zoomer.client_width = width;
+            zoomer.client_height = height;
+
             glViewport(0, 0, width as GLuint, height as GLuint);
         }
         _ => return DefWindowProcA(handle, message, w_param, l_param),
@@ -69,8 +78,8 @@ fn is_wgl_extension_supported(hdc: HDC, extension_name: &str) -> bool {
     extensions.contains(&extension_name)
 }
 
-const WIDTH: u32 = 1280;
-const HEIGHT: u32 = 720;
+const WIDTH: u32 = 1920;
+const HEIGHT: u32 = 1080;
 
 fn main() {
     let instance = unsafe { GetModuleHandleA(std::ptr::null()) };
@@ -108,6 +117,15 @@ fn main() {
     };
 
     assert!(!window.is_null());
+
+    let mut zoomer = Zoomer {
+        client_width: 0,
+        client_height: 0,
+    };
+
+    unsafe {
+        SetWindowLongPtrA(window, GWLP_USERDATA, &mut zoomer as *mut _ as isize);
+    }
 
     let hdc = unsafe { GetDC(window) };
 
@@ -170,25 +188,33 @@ fn main() {
     }
 
     #[rustfmt::skip]
-    let vertices: [GLfloat; 18] = [
-         1.0 * 8.0,  1.0 * 4.5, 0.0,
-         1.0 * 8.0, -1.0 * 4.5, 0.0,
-        -1.0 * 8.0, -1.0 * 4.5, 0.0,
-
-        -1.0 * 8.0, -1.0 * 4.5, 0.0,
-        -1.0 * 8.0,  1.0 * 4.5, 0.0,
-         1.0 * 8.0,  1.0 * 4.5, 0.0
+    let vertices: [Vector3<f32>; 4] = [
+        Vector3::new( -1.0,   1.0, 0.0), // top left
+        Vector3::new( -1.0,  -1.0, 0.0), // bottom left
+        Vector3::new(  1.0,  -1.0, 0.0), // bottom right
+        Vector3::new(  1.0,   1.0, 0.0), // top right
     ];
 
     #[rustfmt::skip]
-    let colors: [GLfloat; 18] = [
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, 1.0,
+    let colors: [Vector3<f32>; 4] = [
+        Vector3::new(1.0, 0.0, 0.0),
+        Vector3::new(0.0, 1.0, 0.0),
+        Vector3::new(0.0, 0.0, 1.0),
+        Vector3::new(1.0, 1.0, 1.0),
+    ];
 
-        0.0, 0.0, 1.0,
-        1.0, 1.0, 1.0,
-        1.0, 0.0, 0.0,
+    #[rustfmt::skip]
+    let uvs: [Vector2<f32>; 4] = [
+        Vector2::new(0.0, 0.0),
+        Vector2::new(0.0, 1.0),
+        Vector2::new(1.0, 1.0),
+        Vector2::new(1.0, 0.0),
+    ];
+
+    #[rustfmt::skip]
+    let indices: [u8; 6] = [
+        0, 1, 2,
+        2, 3, 0
     ];
 
     let vao = unsafe {
@@ -208,6 +234,22 @@ fn main() {
     };
 
     let color_buffer = unsafe {
+        let mut buffer = 0;
+
+        glGenBuffers(1, &mut buffer);
+
+        buffer
+    };
+
+    let uv_buffer = unsafe {
+        let mut buffer = 0;
+
+        glGenBuffers(1, &mut buffer);
+
+        buffer
+    };
+
+    let index_buffer = unsafe {
         let mut buffer = 0;
 
         glGenBuffers(1, &mut buffer);
@@ -257,6 +299,36 @@ fn main() {
             glEnableVertexAttribArray(1);
         }
 
+        glBindBuffer(GL_ARRAY_BUFFER, uv_buffer);
+        {
+            glBufferData(
+                GL_ARRAY_BUFFER,
+                size_of_val(&uvs) as u32,
+                uvs.as_ptr() as *const GLvoid,
+                GL_STATIC_DRAW,
+            );
+
+            glVertexAttribPointer(
+                2,
+                2,
+                GL_FLOAT,
+                false,
+                2 * size_of::<GLfloat>() as GLsizei,
+                std::ptr::null(),
+            );
+            glEnableVertexAttribArray(2);
+        }
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
+        {
+            glBufferData(
+                GL_ELEMENT_ARRAY_BUFFER,
+                size_of_val(&indices) as u32,
+                indices.as_ptr() as *const GLvoid,
+                GL_STATIC_DRAW,
+            );
+        }
+
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
     }
@@ -267,15 +339,17 @@ fn main() {
 
         layout(location = 0) in vec3 position;
         layout(location = 1) in vec3 color;
+        layout(location = 2) in vec2 texCoord;
 
         uniform mat4 u_ViewMatrix;
-        uniform mat4 u_ProjectionMatrix;
 
         out vec3 v_Color;
+        out vec2 v_TexCoord;
 
         void main() {
-            gl_Position = u_ViewMatrix * u_ProjectionMatrix * vec4(position, 1.0);
             v_Color = color;
+            v_TexCoord = texCoord;
+            gl_Position = u_ViewMatrix * vec4(position, 1.0);
         }
     "#
     );
@@ -285,11 +359,15 @@ fn main() {
         #version 330 core
 
         in vec3 v_Color;
+        in vec2 v_TexCoord;
 
         out vec4 color;
 
+        uniform sampler2D u_Texture;
+
         void main() {
-            color = vec4(v_Color, 1.0);
+            color = texture(u_Texture, v_TexCoord);
+            // color = vec4(v_TexCoord, 0.0, 1.0);
         }
     "#
     );
@@ -314,7 +392,19 @@ fn main() {
         );
 
         if !success {
-            eprintln!("Failed to compile the vertex shader!");
+            let mut info_log = vec![0; 512];
+
+            glGetShaderInfoLog(
+                vertex_shader,
+                512,
+                std::ptr::null_mut(),
+                info_log.as_mut_ptr() as *mut GLchar,
+            );
+
+            panic!(
+                "Failed to compile the vertex shader! Error: {}",
+                CStr::from_ptr(info_log.as_ptr()).to_str().unwrap()
+            );
         }
 
         let fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -362,50 +452,61 @@ fn main() {
         unsafe { glGetUniformLocation(shader_program, c_str_ptr!("u_ViewMatrix")) };
     assert!(view_matrix_uniform != -1);
 
-    let projection_matrix_uniform =
-        unsafe { glGetUniformLocation(shader_program, c_str_ptr!("u_ProjectionMatrix")) };
-    assert!(projection_matrix_uniform != -1);
+    let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) as u32 };
+    let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) as u32 };
+    let start_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+    let start_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
 
-    let view_matrix = Matrix4::identity();
-    let projection_matrix = Matrix4::new_orthographic(-8.0, 8.0, -4.5, 4.5, -1.0, 1.0);
+    let screenshot = take_screenshot(std::ptr::null_mut(), start_x, start_y, width, height);
 
-    println!("View matrix: {:#?}", view_matrix);
+    /*
+    stbi_write_png(
+        c_str!("rust_window.png"),
+        width as i32,
+        height as i32,
+        4,
+        screenshot.pixel_bytes(),
+        screenshot.stride() as i32,
+    )
+    .expect(".png writing failed");
+    */
+
+    println!("Screenshot taken!");
+
+    let texture = unsafe {
+        let mut texture = 0;
+
+        glGenTextures(1, &mut texture);
+
+        texture
+    };
+
+    println!(
+        "Screenshot: {}x{} ({})",
+        screenshot.width(),
+        screenshot.height(),
+        screenshot.width() as f32 / screenshot.height() as f32
+    );
 
     unsafe {
-        // TODO: Error handling - will it emit an error if I forget to use a shader program when setting uniforms?
-        glUseProgram(shader_program);
+        glBindTexture(GL_TEXTURE_2D, texture);
 
-        glUniformMatrix4fv(view_matrix_uniform, 1, false, view_matrix.as_ptr());
-        glUniformMatrix4fv(
-            projection_matrix_uniform,
-            1,
-            false,
-            projection_matrix.as_ptr(),
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            screenshot.width(),
+            screenshot.height(),
+            0,
+            GL_RGBA as GLenum,
+            GL_UNSIGNED_BYTE,
+            screenshot.pixel_bytes() as *const _ as *const GLvoid,
         );
-    }
 
-    // Screenshot stuff
-    {
-        let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) as u32 };
-        let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) as u32 };
-        let start_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
-        let start_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
-
-        let screenshot = take_screenshot(std::ptr::null_mut(), start_x, start_y, width, height);
-
-        println!("Screenshot: {:?}", &screenshot.pixel_bytes()[..100]);
-
-        stbi_write_png(
-            c_str!("rust_window.png"),
-            width as i32,
-            height as i32,
-            4,
-            screenshot.pixel_bytes(),
-            screenshot.stride() as i32,
-        )
-        .expect(".png writing failed");
-
-        println!("Screenshot saved!");
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
 
     let _start_time = unsafe { GetTickCount() };
@@ -423,15 +524,43 @@ fn main() {
 
             let _time = GetTickCount() - _start_time;
 
+            let client_aspect_ratio = zoomer.client_width as f32 / zoomer.client_height as f32;
+            let screenshot_aspect_ratio = screenshot.width() as f32 / screenshot.height() as f32;
+            let view_matrix = Matrix4::new_nonuniform_scaling(&Vector3::new(
+                1.0,
+                client_aspect_ratio / screenshot_aspect_ratio,
+                1.0,
+            ));
+
             glClear(GL_COLOR_BUFFER_BIT);
 
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
             glUseProgram(shader_program);
-            glBindVertexArray(vao);
+
             {
-                glDrawArrays(GL_TRIANGLES, 0, 6);
+                glUniformMatrix4fv(view_matrix_uniform, 1, false, view_matrix.as_ptr());
+
+                glBindVertexArray(vao);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer);
+                {
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_BYTE, std::ptr::null());
+                }
             }
+
             glUseProgram(0);
             glBindVertexArray(0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            loop {
+                let error = glGetError();
+
+                if error != GL_NO_ERROR {
+                    println!("OpenGL error: {}", error);
+                } else {
+                    break;
+                }
+            }
 
             assert!(SwapBuffers(hdc) != 0);
         }
