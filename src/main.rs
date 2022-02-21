@@ -12,17 +12,14 @@ use ffi::{c_str, c_str_ptr};
 use gl::*;
 use screenshot::take_screenshot;
 
-use nalgebra::{Matrix4, Vector2, Vector3};
+use nalgebra_glm::{vec2, vec3, Mat4, Vec2, Vec3};
 use winapi::{
     shared::{
         minwindef::*,
         windef::{HDC, HWND},
         windowsx::{GET_X_LPARAM, GET_Y_LPARAM},
     },
-    um::{
-        errhandlingapi::GetLastError, libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount,
-        wingdi::*, winnt::HANDLE, winuser::*,
-    },
+    um::{libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount, wingdi::*, winuser::*},
 };
 
 struct Zoomer {
@@ -245,27 +242,27 @@ fn main() {
     }
 
     #[rustfmt::skip]
-    let vertices: [Vector3<f32>; 4] = [
-        Vector3::new( -1.0,   1.0, 0.0), // top left
-        Vector3::new( -1.0,  -1.0, 0.0), // bottom left
-        Vector3::new(  1.0,  -1.0, 0.0), // bottom right
-        Vector3::new(  1.0,   1.0, 0.0), // top right
+    let vertices: [Vec3; 4] = [
+        vec3( -1.0,   1.0, 0.0), // top left
+        vec3( -1.0,  -1.0, 0.0), // bottom left
+        vec3(  1.0,  -1.0, 0.0), // bottom right
+        vec3(  1.0,   1.0, 0.0), // top right
     ];
 
     #[rustfmt::skip]
-    let colors: [Vector3<f32>; 4] = [
-        Vector3::new(1.0, 0.0, 0.0),
-        Vector3::new(0.0, 1.0, 0.0),
-        Vector3::new(0.0, 0.0, 1.0),
-        Vector3::new(1.0, 1.0, 1.0),
+    let colors: [Vec3; 4] = [
+        vec3(1.0, 0.0, 0.0),
+        vec3(0.0, 1.0, 0.0),
+        vec3(0.0, 0.0, 1.0),
+        vec3(1.0, 1.0, 1.0),
     ];
 
     #[rustfmt::skip]
-    let uvs: [Vector2<f32>; 4] = [
-        Vector2::new(0.0, 0.0),
-        Vector2::new(0.0, 1.0),
-        Vector2::new(1.0, 1.0),
-        Vector2::new(1.0, 0.0),
+    let uvs: [Vec2; 4] = [
+        vec2(0.0, 0.0),
+        vec2(0.0, 1.0),
+        vec2(1.0, 1.0),
+        vec2(1.0, 0.0),
     ];
 
     #[rustfmt::skip]
@@ -576,7 +573,7 @@ fn main() {
 
             let client_aspect_ratio = zoomer.client_width as f32 / zoomer.client_height as f32;
             let screenshot_aspect_ratio = screenshot.width() as f32 / screenshot.height() as f32;
-            let view_matrix = Matrix4::new_nonuniform_scaling(&Vector3::new(
+            let view_matrix = Mat4::new_nonuniform_scaling(&vec3(
                 1.0,
                 client_aspect_ratio / screenshot_aspect_ratio,
                 1.0,
