@@ -12,8 +12,7 @@ use ffi::{c_str, c_str_ptr};
 use gl::*;
 use screenshot::take_screenshot;
 
-use nalgebra::{Matrix3, Matrix4, Vector2, Vector3};
-use stb::image_write::stbi_write_png;
+use nalgebra::{Matrix4, Vector2, Vector3};
 use winapi::{
     shared::{
         minwindef::*,

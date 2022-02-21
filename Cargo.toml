@@ -10,5 +10,4 @@ edition = "2021"
 num-traits = "0.2.14"
 stb = { version = "0.3.2", features = [ "stb_image_write" ] }
 winapi = { version = "0.3.9", features = [ "windef", "winuser", "libloaderapi", "minwindef", "impl-default", "consoleapi", "processenv", "wingdi", "windowsx", "errhandlingapi", "sysinfoapi", "impl-debug" ] }
-lazy_static = "1.4.0"
 nalgebra = "0.30.1"

@@ -1,30 +1,30 @@
-#![allow(non_upper_case_globals)]
+#![allow(non_upper_case_globals, non_snake_case)]
 
 use crate::ffi::c_str_ptr;
-use lazy_static::lazy_static;
 use std::ffi::c_void;
 use std::mem::transmute;
 use std::os::raw::c_char;
 use winapi::shared::windef::{HDC, HGLRC};
 use winapi::um::wingdi::wglGetProcAddress;
 
-// TODO: Make this generate functions instead for better autocomplete
-macro_rules! load_opengl_function {
-    ($type:ty, $name:ident) => {
-        load_opengl_function!(
-            $type,
-            $name,
-            "unable to load OpenGL/WGL function `{}`",
-            stringify!($name)
-        );
+macro_rules! declare_opengl_function {
+    (fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) $(,)?) => {
+        declare_opengl_function!(fn $name($($arg: $arg_ty),*) -> ());
     };
-    ($type:ty, $name:ident, $($arg: expr),+) => {
-        lazy_static! {
-            pub static ref $name: $type = unsafe {
+    (fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $return_type:ty $(,)?) => {
+        pub unsafe fn $name($($arg: $arg_ty),*) -> $return_type {
+            use std::sync::Once;
+
+            static INIT: Once = Once::new();
+            static mut FPTR: Option<extern "C" fn ($($arg: $arg_ty),*) -> $return_type> = None;
+
+            INIT.call_once(|| {
                 let func = wglGetProcAddress(c_str_ptr!(stringify!($name)));
-                assert!(!func.is_null(), $($arg),+);
-                transmute::<_, _>(func)
-            };
+                assert!(!func.is_null(), "unable to load OpenGL/WGL function `{}`", stringify!($name));
+                FPTR = transmute::<_, _>(func)
+            });
+
+            FPTR.unwrap()($($arg),*)
         }
     };
 }
@@ -144,112 +144,75 @@ extern "C" {
     pub fn glTexParameteri(target: GLenum, pname: GLenum, param: GLint);
 }
 
-load_opengl_function!(
-    unsafe extern "C" fn(n: GLsizei, buffers: *mut GLuint),
-    glGenBuffers
-);
-load_opengl_function!(
-    unsafe extern "C" fn(target: GLenum, buffer: GLuint),
-    glBindBuffer
-);
-load_opengl_function!(
-    unsafe extern "C" fn(target: GLenum, size: GLsizei, data: *const GLvoid, usage: GLenum),
-    glBufferData
-);
-load_opengl_function!(
-    unsafe extern "C" fn(
+declare_opengl_function!(fn glGenBuffers(n: GLsizei, buffers: *mut GLuint));
+declare_opengl_function!(fn glBindBuffer(target: GLenum, buffer: GLuint));
+declare_opengl_function!(fn glBufferData(target: GLenum,size: GLsizei,data: *const GLvoid, usage: GLenum));
+declare_opengl_function!(
+    fn glVertexAttribPointer(
         index: GLuint,
         size: GLint,
         type_: GLenum,
         normalized: GLboolean,
         stride: GLsizei,
         pointer: *const GLvoid,
-    ),
-    glVertexAttribPointer
+    )
 );
-load_opengl_function!(
-    unsafe extern "C" fn(index: GLuint),
-    glEnableVertexAttribArray
+
+declare_opengl_function!(fn glEnableVertexAttribArray(index: GLuint));
+declare_opengl_function!(fn glGenVertexArrays(n: GLsizei, arrays: *mut GLuint));
+declare_opengl_function!(fn glBindVertexArray(array: GLuint));
+
+declare_opengl_function!(fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei));
+declare_opengl_function!(
+    fn glDrawElements(
+        mode: GLenum,
+        count: GLsizei,
+        type_: GLenum,
+        indices: *const GLvoid,
+    )
 );
-load_opengl_function!(
-    unsafe extern "C" fn(n: GLsizei, arrays: *const GLuint),
-    glGenVertexArrays
-);
-load_opengl_function!(unsafe extern "C" fn(array: GLuint), glBindVertexArray);
-load_opengl_function!(
-    unsafe extern "C" fn(mode: GLenum, first: GLint, count: GLsizei),
-    glDrawArrays
-);
-load_opengl_function!(
-    unsafe extern "C" fn(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const GLvoid),
-    glDrawElements
-);
-load_opengl_function!(
-    unsafe extern "C" fn(shaderType: GLenum) -> GLuint,
-    glCreateShader
-);
-load_opengl_function!(
-    unsafe extern "C" fn(
+
+declare_opengl_function!(fn glCreateShader(shaderType: GLenum) -> GLuint);
+declare_opengl_function!(
+    fn glShaderSource(
         shader: GLuint,
         count: GLsizei,
         string: *const *const GLchar,
         length: *const GLint,
-    ),
-    glShaderSource
+    )
 );
-load_opengl_function!(unsafe extern "C" fn(shader: GLuint), glCompileShader);
-load_opengl_function!(
-    unsafe extern "C" fn(shader: GLuint, pname: GLenum, params: *mut GLint),
-    glGetShaderiv
-);
-load_opengl_function!(unsafe extern "C" fn() -> GLuint, glCreateProgram);
-load_opengl_function!(
-    unsafe extern "C" fn(program: GLuint, shader: GLuint),
-    glAttachShader
-);
-load_opengl_function!(unsafe extern "C" fn(program: GLuint), glLinkProgram);
-load_opengl_function!(
-    unsafe extern "C" fn(program: GLuint, pname: GLenum, params: *mut GLint),
-    glGetProgramiv
-);
-load_opengl_function!(unsafe extern "C" fn(program: GLuint), glUseProgram);
-load_opengl_function!(
-    unsafe extern "C" fn(program: GLuint, name: *const GLchar) -> GLint,
-    glGetUniformLocation
-);
-load_opengl_function!(
-    unsafe extern "C" fn(location: GLint, v0: GLint),
-    glUniform1i
-);
-load_opengl_function!(
-    unsafe extern "C" fn(
+declare_opengl_function!(fn glCompileShader(shader: GLuint));
+declare_opengl_function!(fn glGetShaderiv(shader: GLuint, pname: GLenum, params: *mut GLint));
+declare_opengl_function!(fn glCreateProgram() -> GLuint);
+declare_opengl_function!(fn glAttachShader(program: GLuint, shader: GLuint));
+declare_opengl_function!(fn glLinkProgram(program: GLuint));
+declare_opengl_function!(fn glGetProgramiv(program: GLuint, pname: GLenum, params: *mut GLint));
+declare_opengl_function!(fn glUseProgram(program: GLuint));
+declare_opengl_function!(fn glGetUniformLocation(program: GLuint, name: *const GLchar) -> GLint);
+declare_opengl_function!(fn glUniform1i(location: GLint, v0: GLint));
+declare_opengl_function!(
+    fn glUniformMatrix4fv(
         location: GLint,
         count: GLsizei,
         transpose: GLboolean,
         value: *const GLfloat,
-    ),
-    glUniformMatrix4fv
+    )
 );
-load_opengl_function!(unsafe extern "C" fn(cap: GLenum), glEanble);
-load_opengl_function!(
-    unsafe extern "C" fn(n: GLsizei, textures: *mut GLuint),
-    glGenTextures
-);
-load_opengl_function!(
-    unsafe extern "C" fn(target: GLenum, texture: GLuint),
-    glBindTexture
-);
-load_opengl_function!(unsafe extern "C" fn(texture: GLenum), glActiveTexture);
-load_opengl_function!(unsafe extern "C" fn(target: GLenum), glGenerateMipmap);
-load_opengl_function!(
-    unsafe extern "C" fn(
+declare_opengl_function!(
+    fn glGetShaderInfoLog(
         shader: GLuint,
         maxLength: GLsizei,
         length: *mut GLsizei,
         infoLog: *mut GLchar,
-    ),
-    glGetShaderInfoLog
+    )
 );
+
+declare_opengl_function!(fn glEnable(cap: GLenum));
+
+declare_opengl_function!(fn glGenTextures(n: GLsizei, textures: *mut GLuint));
+declare_opengl_function!(fn glBindTexture(target: GLenum, texture: GLuint));
+declare_opengl_function!(fn glActiveTexture(texture: GLenum));
+declare_opengl_function!(fn glGenerateMipmap(target: GLenum));
 
 #[allow(clippy::upper_case_acronyms)]
 type DEBUGPROC = unsafe extern "C" fn(
@@ -261,20 +224,13 @@ type DEBUGPROC = unsafe extern "C" fn(
     message: *const GLchar,
     userParam: *mut GLvoid,
 );
-
-load_opengl_function!(
-    unsafe extern "C" fn(callback: DEBUGPROC, userParam: *mut c_void),
-    glDebugMessageCallback
-);
+declare_opengl_function!(fn glDebugMessageCallback(callback: DEBUGPROC, userParam: *mut c_void));
 
 // https://www.khronos.org/registry/OpenGL/extensions/ARB/WGL_ARB_create_context.txt
-load_opengl_function!(
-    unsafe extern "C" fn(hdc: HDC, shareContext: HGLRC, attribList: *const i32) -> HGLRC,
-    wglCreateContextAttribsARB
+declare_opengl_function!(
+    fn wglCreateContextAttribsARB(hdc: HDC, shareContext: HGLRC, attribList: *const i32) -> HGLRC
 );
 // https://www.khronos.org/registry/OpenGL/extensions/ARB/WGL_ARB_extensions_string.txt
-load_opengl_function!(
-    unsafe extern "C" fn(hdc: HDC) -> *const GLchar,
-    wglGetExtensionsStringARB,
-    "`WGL_ARB_extensions_string` extension not supported"
+declare_opengl_function!(
+    fn wglGetExtensionsStringARB(hdc: HDC) -> *const GLchar,
 );
