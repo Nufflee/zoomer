@@ -7,28 +7,6 @@ use std::os::raw::c_char;
 use winapi::shared::windef::{HDC, HGLRC};
 use winapi::um::wingdi::wglGetProcAddress;
 
-macro_rules! declare_opengl_function {
-    (fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) $(,)?) => {
-        declare_opengl_function!(fn $name($($arg: $arg_ty),*) -> ());
-    };
-    (fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $return_type:ty $(,)?) => {
-        pub unsafe fn $name($($arg: $arg_ty),*) -> $return_type {
-            use std::sync::Once;
-
-            static INIT: Once = Once::new();
-            static mut FPTR: Option<extern "C" fn ($($arg: $arg_ty),*) -> $return_type> = None;
-
-            INIT.call_once(|| {
-                let func = wglGetProcAddress(c_str_ptr!(stringify!($name)));
-                assert!(!func.is_null(), "unable to load OpenGL/WGL function `{}`", stringify!($name));
-                FPTR = transmute::<_, _>(func)
-            });
-
-            FPTR.unwrap()($($arg),*)
-        }
-    };
-}
-
 pub type GLuint = u32;
 pub type GLsizei = u32;
 pub type GLenum = u32;
@@ -120,6 +98,26 @@ pub const GL_DEBUG_SEVERITY_MEDIUM: GLenum = 0x9147;
 pub const GL_DEBUG_SEVERITY_LOW: GLenum = 0x9148;
 pub const GL_DEBUG_SEVERITY_NOTIFICATION: GLenum = 0x826B;
 
+pub fn shader_type_to_str(type_: GLenum) -> &'static str {
+    match type_ {
+        GL_VERTEX_SHADER => "vertex",
+        GL_FRAGMENT_SHADER => "fragment",
+        _ => unreachable!(),
+    }
+}
+
+pub fn debug_type_to_str(type_: GLenum) -> &'static str {
+    match type_ {
+        GL_DEBUG_TYPE_ERROR => "ERROR",
+        GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR => "DEPRECATED BEHAVIOR",
+        GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR => "UNDEFINED BEHAVIOR",
+        GL_DEBUG_TYPE_PORTABILITY => "PORTABILITY",
+        GL_DEBUG_TYPE_PERFORMANCE => "PERFORMANCE",
+        GL_DEBUG_TYPE_OTHER => "OTHER",
+        _ => unreachable!(),
+    }
+}
+
 // https://www.khronos.org/registry/OpenGL/api/GL/glcorearb.h
 extern "C" {
     pub fn glGetString(name: GLenum) -> *const GLubyte;
@@ -142,6 +140,28 @@ extern "C" {
         pixels: *const GLvoid,
     );
     pub fn glTexParameteri(target: GLenum, pname: GLenum, param: GLint);
+}
+
+macro_rules! declare_opengl_function {
+    (fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) $(,)?) => {
+        declare_opengl_function!(fn $name($($arg: $arg_ty),*) -> ());
+    };
+    (fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $return_type:ty $(,)?) => {
+        pub unsafe fn $name($($arg: $arg_ty),*) -> $return_type {
+            use std::sync::Once;
+
+            static INIT: Once = Once::new();
+            static mut FPTR: Option<extern "C" fn ($($arg: $arg_ty),*) -> $return_type> = None;
+
+            INIT.call_once(|| {
+                let func = wglGetProcAddress(c_str_ptr!(stringify!($name)));
+                assert!(!func.is_null(), "unable to load OpenGL/WGL function `{}`", stringify!($name));
+                FPTR = transmute::<_, _>(func)
+            });
+
+            FPTR.unwrap()($($arg),*)
+        }
+    };
 }
 
 declare_opengl_function!(fn glGenBuffers(n: GLsizei, buffers: *mut GLuint));
