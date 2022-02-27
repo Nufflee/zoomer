@@ -74,11 +74,9 @@ fn main() {
 
         let mut message = MSG::default();
 
-        loop {
-            while PeekMessageA(&mut message, window, 0, 0, PM_REMOVE) != 0 {
-                TranslateMessage(&message);
-                DispatchMessageA(&message);
-            }
+        while GetMessageA(&mut message, std::ptr::null_mut(), 0, 0) != 0 {
+            TranslateMessage(&message);
+            DispatchMessageA(&message);
 
             let _time = GetTickCount() - _start_time;
         }
