@@ -4,22 +4,15 @@ mod gl;
 mod screenshot;
 mod zoomer;
 
-use std::{
-    ffi::CStr,
-    mem::{size_of, size_of_val},
-};
+use ffi::c_str_ptr;
 
-use ffi::{c_str, c_str_ptr};
-use gl::*;
-
-use nalgebra_glm::{vec2, vec3, Mat4, Vec2, Vec3};
 use winapi::{
     shared::{
         minwindef::*,
-        windef::{HDC, HWND},
+        windef::HWND,
         windowsx::{GET_X_LPARAM, GET_Y_LPARAM},
     },
-    um::{libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount, wingdi::*, winuser::*},
+    um::{libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount, winuser::*},
 };
 
 use crate::zoomer::Zoomer;
@@ -93,14 +86,16 @@ fn main() {
 }
 
 unsafe extern "system" fn window_proc(
-    handle: HWND,
+    window: HWND,
     message: u32,
     w_param: usize,
     l_param: isize,
 ) -> LRESULT {
     use winapi::um::winuser::*;
 
-    let zoomer = &mut *(GetWindowLongPtrW(handle, GWLP_USERDATA) as *mut Zoomer);
+    let zoomer = &mut *(GetWindowLongPtrW(window, GWLP_USERDATA) as *mut Zoomer);
+
+    static mut TRACKING_MOUSE: bool = false;
 
     match message {
         WM_MOUSEWHEEL => {
@@ -114,12 +109,45 @@ unsafe extern "system" fn window_proc(
             let width = LOWORD(l_param as DWORD);
             let height = HIWORD(l_param as DWORD);
 
-            zoomer.on_resize(width as u32, height as u32);
+            zoomer.on_resize(width, height);
+        }
+        WM_LBUTTONDOWN => {
+            let x = GET_X_LPARAM(l_param);
+            let y = GET_Y_LPARAM(l_param);
+
+            zoomer.on_left_mouse_down(x, y);
+        }
+        WM_LBUTTONUP => {
+            zoomer.on_left_mouse_up();
+        }
+        WM_MOUSELEAVE => {
+            zoomer.on_mouse_leave();
+
+            TRACKING_MOUSE = false;
+        }
+        WM_MOUSEMOVE => {
+            let x = GET_X_LPARAM(l_param);
+            let y = GET_Y_LPARAM(l_param);
+
+            if !TRACKING_MOUSE {
+                TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: window,
+                    dwHoverTime: HOVER_DEFAULT,
+                });
+
+                TRACKING_MOUSE = true;
+            }
+
+            if w_param & MK_LBUTTON != 0 {
+                zoomer.on_mouse_move(x, y);
+            }
         }
         WM_DESTROY => {
             PostQuitMessage(0);
         }
-        _ => return DefWindowProcA(handle, message, w_param, l_param),
+        _ => return DefWindowProcA(window, message, w_param, l_param),
     }
 
     0

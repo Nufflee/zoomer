@@ -61,6 +61,10 @@ pub struct Zoomer {
     index_buffer_id: GLuint,
     shader_program_id: GLuint,
     view_matrix_uniform: GLint,
+
+    mouse_origin: Option<Vec2>,
+    translation_matrix: Mat4,
+    last_translation_matrix: Mat4,
 }
 
 impl Zoomer {
@@ -69,15 +73,18 @@ impl Zoomer {
 
         self.hdc = Some(unsafe { GetDC(window) });
 
-        self.create_opengl_context(window);
+        self.create_opengl_context();
         self.init_render_env();
 
+        self.translation_matrix = Mat4::identity();
+        self.last_translation_matrix = Mat4::identity();
+
         unsafe {
-            glClearColor(0.5, 0.5, 0.5, 1.0);
+            glClearColor(0.25, 0.25, 0.25, 1.0);
         }
     }
 
-    fn create_opengl_context(&self, window: HWND) {
+    fn create_opengl_context(&self) {
         // Current format probably doesn't support OpenGL, so let's create a new poggers one.
         let format_descriptor = PIXELFORMATDESCRIPTOR {
             nSize: size_of::<PIXELFORMATDESCRIPTOR>() as u16,
@@ -414,28 +421,57 @@ impl Zoomer {
         );
     }
 
-    pub fn on_resize(&mut self, new_client_width: u32, new_client_height: u32) {
-        unsafe {
-            glViewport(0, 0, new_client_width, new_client_height);
-        }
+    pub fn on_resize(&mut self, new_client_width: u16, new_client_height: u16) {
+        self.client_width = new_client_width as u32;
+        self.client_height = new_client_height as u32;
 
-        self.client_width = new_client_width;
-        self.client_height = new_client_height;
+        unsafe {
+            glViewport(0, 0, self.client_width, self.client_height);
+        }
 
         self.render();
     }
 
-    pub fn render(&self) {
-        println!("rerender");
+    pub fn on_left_mouse_down(&mut self, x: i32, y: i32) {
+        self.mouse_origin = Some(vec2(x as f32, y as f32));
+    }
 
+    pub fn on_mouse_leave(&mut self) {
+        println!("mouse leave");
+        self.mouse_origin = None;
+        self.last_translation_matrix = self.translation_matrix;
+    }
+
+    pub fn on_left_mouse_up(&mut self) {
+        self.mouse_origin = None;
+        self.last_translation_matrix = self.translation_matrix;
+    }
+
+    pub fn on_mouse_move(&mut self, x: i32, y: i32) {
+        if let Some(mouse_origin) = self.mouse_origin {
+            let delta = vec2(x as f32, y as f32) - mouse_origin;
+
+            self.translation_matrix = self.last_translation_matrix
+                * Mat4::new_translation(&vec3(
+                    delta.x / self.client_width as f32 * 2.0,
+                    -delta.y / self.client_height as f32 * 2.0,
+                    0.0,
+                ));
+
+            self.render();
+        }
+    }
+
+    pub fn render(&self) {
         let client_aspect_ratio = self.client_width as f32 / self.client_height as f32;
         let screenshot = self.screenshot.as_ref().unwrap();
         let screenshot_aspect_ratio = screenshot.width() as f32 / screenshot.height() as f32;
-        let view_matrix = Mat4::new_nonuniform_scaling(&vec3(
-            1.0,
-            client_aspect_ratio / screenshot_aspect_ratio,
-            1.0,
-        ));
+        let view_matrix = self.translation_matrix
+            * Mat4::new_nonuniform_scaling(&vec3(
+                1.0,
+                client_aspect_ratio / screenshot_aspect_ratio,
+                1.0,
+            ));
 
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT);
