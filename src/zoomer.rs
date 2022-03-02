@@ -3,6 +3,7 @@ use std::{
     mem::{size_of, size_of_val},
 };
 
+use crate::camera::Camera;
 use crate::ffi::c_str_ptr;
 use crate::gl::*;
 use crate::screenshot::take_screenshot;
@@ -62,9 +63,8 @@ pub struct Zoomer {
     shader_program_id: GLuint,
     view_matrix_uniform: GLint,
 
-    mouse_origin: Option<Vec2>,
-    translation_matrix: Mat4,
-    last_translation_matrix: Mat4,
+    last_mouse_pos: Vec2,
+    camera: Camera,
 }
 
 impl Zoomer {
@@ -76,11 +76,8 @@ impl Zoomer {
         self.create_opengl_context();
         self.init_render_env();
 
-        self.translation_matrix = Mat4::identity();
-        self.last_translation_matrix = Mat4::identity();
-
         unsafe {
-            glClearColor(0.25, 0.25, 0.25, 1.0);
+            glClearColor(0.25, 0.25, 0.28, 1.0);
         }
     }
 
@@ -371,7 +368,7 @@ impl Zoomer {
             glBindTexture(GL_TEXTURE_2D, texture);
 
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
             let screenshot = self.screenshot.as_ref().unwrap();
 
@@ -433,40 +430,51 @@ impl Zoomer {
     }
 
     pub fn on_left_mouse_down(&mut self, x: i32, y: i32) {
-        self.mouse_origin = Some(vec2(x as f32, y as f32));
+        self.last_mouse_pos = vec2(x as f32, y as f32);
     }
 
-    pub fn on_mouse_leave(&mut self) {
-        println!("mouse leave");
-        self.mouse_origin = None;
-        self.last_translation_matrix = self.translation_matrix;
+    /// Converts from screen pixel space ([0, client_width] x [0, client_height]) to normalized screen coordinates or NDC ([-1, 1] x [-1, 1])
+    pub fn pixel_to_screen_coords(&self, pixel_coords: Vec2) -> Vec2 {
+        vec2(
+            pixel_coords.x / self.client_width as f32 * 2.0 - 1.0,
+            -1.0 * (pixel_coords.y / self.client_height as f32 * 2.0 - 1.0),
+        )
     }
 
-    pub fn on_left_mouse_up(&mut self) {
-        self.mouse_origin = None;
-        self.last_translation_matrix = self.translation_matrix;
-    }
-
-    pub fn on_mouse_move(&mut self, x: i32, y: i32) {
-        if let Some(mouse_origin) = self.mouse_origin {
-            let delta = vec2(x as f32, y as f32) - mouse_origin;
-
-            self.translation_matrix = self.last_translation_matrix
-                * Mat4::new_translation(&vec3(
-                    delta.x / self.client_width as f32 * 2.0,
-                    -delta.y / self.client_height as f32 * 2.0,
-                    0.0,
-                ));
-
-            self.render();
+    pub fn on_mouse_move(&mut self, x: i32, y: i32, left_mouse_down: bool) {
+        if !left_mouse_down {
+            return;
         }
+
+        let mouse_pos = vec2(x as f32, y as f32);
+        let delta = mouse_pos - self.last_mouse_pos;
+
+        self.camera.translate(vec2(
+            delta.x / self.client_width as f32 * 2.0,
+            -1.0 * delta.y / self.client_height as f32 * 2.0,
+        ));
+
+        self.last_mouse_pos = mouse_pos;
+
+        self.render();
+    }
+
+    pub fn on_mouse_wheel(&mut self, delta: i16, x: i32, y: i32) {
+        let delta = 1.0 + delta as f32 / 120.0 / 10.0;
+
+        let screen_space = self.pixel_to_screen_coords(vec2(x as f32, y as f32));
+        let world_space = self.camera.screen_to_world_space_coords(screen_space);
+
+        self.camera.zoom(delta, world_space);
+
+        self.render();
     }
 
     pub fn render(&self) {
         let client_aspect_ratio = self.client_width as f32 / self.client_height as f32;
         let screenshot = self.screenshot.as_ref().unwrap();
         let screenshot_aspect_ratio = screenshot.width() as f32 / screenshot.height() as f32;
-        let view_matrix = self.translation_matrix
+        let view_matrix = self.camera.to_homogenous()
             * Mat4::new_nonuniform_scaling(&vec3(
                 1.0,
                 client_aspect_ratio / screenshot_aspect_ratio,

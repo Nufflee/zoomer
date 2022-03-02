@@ -1,21 +1,21 @@
+mod camera;
 mod console;
 mod ffi;
 mod gl;
 mod screenshot;
 mod zoomer;
 
-use ffi::c_str_ptr;
-
 use winapi::{
     shared::{
         minwindef::*,
-        windef::HWND,
+        windef::{HWND, POINT},
         windowsx::{GET_X_LPARAM, GET_Y_LPARAM},
     },
     um::{libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount, winuser::*},
 };
 
-use crate::zoomer::Zoomer;
+use ffi::c_str_ptr;
+use zoomer::Zoomer;
 
 const WIDTH: i32 = 1920;
 const HEIGHT: i32 = 1080;
@@ -63,6 +63,7 @@ fn main() {
 
     zoomer.init(window);
 
+    // Store a pointer to the zoomer object in the window so that we can access it from the `window_proc`.
     unsafe {
         SetWindowLongPtrA(window, GWLP_USERDATA, &mut zoomer as *mut _ as isize);
     }
@@ -93,16 +94,7 @@ unsafe extern "system" fn window_proc(
 
     let zoomer = &mut *(GetWindowLongPtrW(window, GWLP_USERDATA) as *mut Zoomer);
 
-    static mut TRACKING_MOUSE: bool = false;
-
     match message {
-        WM_MOUSEWHEEL => {
-            let delta = GET_WHEEL_DELTA_WPARAM(w_param);
-            let x = GET_X_LPARAM(l_param);
-            let y = GET_Y_LPARAM(l_param);
-
-            println!("delta = {}, x = {}, y = {}", delta, x, y);
-        }
         WM_SIZE => {
             let width = LOWORD(l_param as DWORD);
             let height = HIWORD(l_param as DWORD);
@@ -115,32 +107,22 @@ unsafe extern "system" fn window_proc(
 
             zoomer.on_left_mouse_down(x, y);
         }
-        WM_LBUTTONUP => {
-            zoomer.on_left_mouse_up();
-        }
-        WM_MOUSELEAVE => {
-            zoomer.on_mouse_leave();
-
-            TRACKING_MOUSE = false;
-        }
         WM_MOUSEMOVE => {
             let x = GET_X_LPARAM(l_param);
             let y = GET_Y_LPARAM(l_param);
 
-            if !TRACKING_MOUSE {
-                TrackMouseEvent(&mut TRACKMOUSEEVENT {
-                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                    dwFlags: TME_LEAVE,
-                    hwndTrack: window,
-                    dwHoverTime: HOVER_DEFAULT,
-                });
+            zoomer.on_mouse_move(x, y, w_param & MK_LBUTTON != 0);
+        }
+        WM_MOUSEWHEEL => {
+            let delta = GET_WHEEL_DELTA_WPARAM(w_param);
+            let x = GET_X_LPARAM(l_param);
+            let y = GET_Y_LPARAM(l_param);
 
-                TRACKING_MOUSE = true;
-            }
+            let mut point = POINT { x, y };
 
-            if w_param & MK_LBUTTON != 0 {
-                zoomer.on_mouse_move(x, y);
-            }
+            ScreenToClient(window, &mut point);
+
+            zoomer.on_mouse_wheel(delta, point.x, point.y);
         }
         WM_DESTROY => {
             PostQuitMessage(0);
