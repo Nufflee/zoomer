@@ -2,6 +2,7 @@ mod camera;
 mod console;
 mod ffi;
 mod gl;
+mod imgui_impl;
 mod screenshot;
 mod zoomer;
 
@@ -15,6 +16,7 @@ use winapi::{
 };
 
 use ffi::c_str_ptr;
+use imgui_impl::*;
 use zoomer::Zoomer;
 
 const WIDTH: i32 = 1920;
@@ -75,11 +77,19 @@ fn main() {
 
         let mut message = MSG::default();
 
-        while GetMessageA(&mut message, std::ptr::null_mut(), 0, 0) != 0 {
-            TranslateMessage(&message);
-            DispatchMessageA(&message);
+        'main: loop {
+            while PeekMessageA(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                if message.message == WM_QUIT {
+                    break 'main;
+                }
+
+                TranslateMessage(&message);
+                DispatchMessageA(&message);
+            }
 
             let _time = GetTickCount() - _start_time;
+
+            zoomer.render();
         }
     }
 }
@@ -87,12 +97,24 @@ fn main() {
 unsafe extern "system" fn window_proc(
     window: HWND,
     message: u32,
-    w_param: usize,
-    l_param: isize,
+    w_param: WPARAM,
+    l_param: LPARAM,
 ) -> LRESULT {
     use winapi::um::winuser::*;
 
-    let zoomer = &mut *(GetWindowLongPtrW(window, GWLP_USERDATA) as *mut Zoomer);
+    let zoomer = GetWindowLongPtrW(window, GWLP_USERDATA) as *mut Zoomer;
+
+    if zoomer.is_null() {
+        // zoomer has not been initialized yet.
+        return DefWindowProcW(window, message, w_param, l_param);
+    }
+
+    let zoomer = &mut *zoomer;
+    let imgui_io = zoomer.imgui.as_mut().unwrap().io();
+
+    if ImGui_ImplWin32_WndProcHandler(window, message, w_param, l_param) != 0 {
+        return 1;
+    }
 
     match message {
         WM_SIZE => {
@@ -102,18 +124,30 @@ unsafe extern "system" fn window_proc(
             zoomer.on_resize(width, height);
         }
         WM_LBUTTONDOWN => {
+            if imgui_io.want_capture_mouse {
+                return 0;
+            }
+
             let x = GET_X_LPARAM(l_param);
             let y = GET_Y_LPARAM(l_param);
 
             zoomer.on_left_mouse_down(x, y);
         }
         WM_MOUSEMOVE => {
+            if imgui_io.want_capture_mouse {
+                return 0;
+            }
+
             let x = GET_X_LPARAM(l_param);
             let y = GET_Y_LPARAM(l_param);
 
             zoomer.on_mouse_move(x, y, w_param & MK_LBUTTON != 0);
         }
         WM_MOUSEWHEEL => {
+            if imgui_io.want_capture_mouse {
+                return 0;
+            }
+
             let delta = GET_WHEEL_DELTA_WPARAM(w_param);
             let x = GET_X_LPARAM(l_param);
             let y = GET_Y_LPARAM(l_param);

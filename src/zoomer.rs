@@ -1,3 +1,4 @@
+use std::ffi::c_void;
 use std::{
     ffi::{CStr, CString},
     mem::{size_of, size_of_val},
@@ -6,6 +7,7 @@ use std::{
 use crate::camera::Camera;
 use crate::ffi::c_str_ptr;
 use crate::gl::*;
+use crate::imgui_impl::*;
 use crate::screenshot::take_screenshot;
 use crate::{console, screenshot::Screenshot};
 
@@ -62,6 +64,7 @@ pub struct Zoomer {
     index_buffer_id: GLuint,
     shader_program_id: GLuint,
     view_matrix_uniform: GLint,
+    pub imgui: Option<imgui::Context>,
 
     last_mouse_pos: Vec2,
     camera: Camera,
@@ -75,6 +78,8 @@ impl Zoomer {
 
         self.create_opengl_context();
         self.init_render_env();
+
+        self.init_imgui(window);
 
         unsafe {
             glClearColor(0.25, 0.25, 0.28, 1.0);
@@ -388,6 +393,17 @@ impl Zoomer {
         }
     }
 
+    fn init_imgui(&mut self, window: HWND) {
+        let imgui = imgui::Context::create();
+
+        unsafe {
+            ImGui_ImplWin32_Init(window as *const c_void);
+            ImGui_ImplOpenGL3_Init(c_str_ptr!("#version 330 core"));
+        }
+
+        self.imgui = Some(imgui);
+    }
+
     fn take_screenshot(&mut self) {
         let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) as u32 };
         let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) as u32 };
@@ -455,8 +471,6 @@ impl Zoomer {
         ));
 
         self.last_mouse_pos = mouse_pos;
-
-        self.render();
     }
 
     pub fn on_mouse_wheel(&mut self, delta: i16, x: i32, y: i32) {
@@ -466,11 +480,9 @@ impl Zoomer {
         let world_space = self.camera.screen_to_world_space_coords(screen_space);
 
         self.camera.zoom(delta, world_space);
-
-        self.render();
     }
 
-    pub fn render(&self) {
+    pub fn render(&mut self) {
         let client_aspect_ratio = self.client_width as f32 / self.client_height as f32;
         let screenshot = self.screenshot.as_ref().unwrap();
         let screenshot_aspect_ratio = screenshot.width() as f32 / screenshot.height() as f32;
@@ -501,8 +513,30 @@ impl Zoomer {
             glUseProgram(0);
             glBindVertexArray(0);
             glBindTexture(GL_TEXTURE_2D, 0);
+        }
 
+        self.render_imgui();
+
+        unsafe {
             SwapBuffers(self.hdc.unwrap());
+        }
+    }
+
+    pub fn render_imgui(&mut self) {
+        unsafe {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplWin32_NewFrame();
+        }
+
+        let imgui = self.imgui.as_mut().unwrap();
+        let ui = imgui.frame();
+
+        ui.show_demo_window(&mut true);
+
+        let draw_data = imgui.render();
+
+        unsafe {
+            ImGui_ImplOpenGL3_RenderDrawData(draw_data as *const _ as *mut _);
         }
     }
 }
