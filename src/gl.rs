@@ -148,6 +148,7 @@ macro_rules! declare_opengl_function {
         declare_opengl_function!(fn $name($($arg: $arg_ty),*) -> ());
     };
     (fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $return_type:ty $(,)?) => {
+        #[inline(always)]
         pub unsafe fn $name($($arg: $arg_ty),*) -> $return_type {
             use std::sync::Once;
 
