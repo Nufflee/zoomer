@@ -1,4 +1,5 @@
 use std::ffi::c_void;
+use std::fs;
 use std::{
     ffi::{CStr, CString},
     mem::{size_of, size_of_val},
@@ -11,6 +12,7 @@ use crate::imgui_impl::*;
 use crate::screenshot::take_screenshot;
 use crate::{console, screenshot::Screenshot};
 
+use imgui::{Condition, FontConfig, FontSource};
 use nalgebra_glm::{vec2, vec3, Mat4, Vec2, Vec3};
 use winapi::{
     shared::windef::{HDC, HWND},
@@ -64,9 +66,13 @@ pub struct Zoomer {
     index_buffer_id: GLuint,
     shader_program_id: GLuint,
     view_matrix_uniform: GLint,
-    pub imgui: Option<imgui::Context>,
+    imgui: Option<imgui::Context>,
+    debug_window_is_open: bool,
 
-    last_mouse_pos: Vec2,
+    /// Current mouse position in pixel coordinate space.
+    mouse_pos: Vec2,
+    /// Last mouse position in screen coordinate space.
+    last_mouse_screen_pos: Vec2,
     camera: Camera,
 }
 
@@ -402,6 +408,32 @@ impl Zoomer {
         }
 
         self.imgui = Some(imgui);
+        let imgui = self.imgui.as_mut().unwrap();
+
+        let maybe_font_data = fs::read("C:\\Windows\\Fonts\\FiraCode-Regular.ttf").ok();
+        let font = if let Some(ref font_data) = maybe_font_data {
+            FontSource::TtfData {
+                data: font_data,
+                size_pixels: 19.0,
+                config: None,
+            }
+        } else {
+            FontSource::DefaultFontData {
+                config: Some(FontConfig {
+                    size_pixels: 19.0,
+                    ..Default::default()
+                }),
+            }
+        };
+
+        imgui.fonts().add_font(&[font]);
+        imgui.set_ini_filename(None);
+
+        let style = imgui.style_mut();
+        style.item_spacing = [15.0, 7.5];
+        style.window_rounding = 5.0;
+
+        self.debug_window_is_open = true;
     }
 
     fn take_screenshot(&mut self) {
@@ -410,7 +442,7 @@ impl Zoomer {
         let start_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
         let start_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
 
-        let start = std::time::Instant::now();
+        let timer = std::time::Instant::now();
 
         self.screenshot = Some(take_screenshot(
             std::ptr::null_mut(),
@@ -422,8 +454,8 @@ impl Zoomer {
         let screenshot = self.screenshot.as_ref().unwrap();
 
         println!(
-            "Screenshot taken in {} seconds!",
-            start.elapsed().as_secs_f32()
+            "Screenshot taken in {} seconds",
+            timer.elapsed().as_secs_f32()
         );
 
         println!(
@@ -445,10 +477,6 @@ impl Zoomer {
         self.render();
     }
 
-    pub fn on_left_mouse_down(&mut self, x: i32, y: i32) {
-        self.last_mouse_pos = vec2(x as f32, y as f32);
-    }
-
     /// Converts from screen pixel space ([0, client_width] x [0, client_height]) to normalized screen coordinates or NDC ([-1, 1] x [-1, 1])
     pub fn pixel_to_screen_coords(&self, pixel_coords: Vec2) -> Vec2 {
         vec2(
@@ -457,20 +485,23 @@ impl Zoomer {
         )
     }
 
+    pub fn on_left_mouse_down(&mut self, x: i32, y: i32) {
+        self.last_mouse_screen_pos = self.pixel_to_screen_coords(vec2(x as f32, y as f32));
+    }
+
     pub fn on_mouse_move(&mut self, x: i32, y: i32, left_mouse_down: bool) {
+        self.mouse_pos = vec2(x as f32, y as f32);
+
         if !left_mouse_down {
             return;
         }
 
-        let mouse_pos = vec2(x as f32, y as f32);
-        let delta = mouse_pos - self.last_mouse_pos;
+        let mouse_screen_pos = self.pixel_to_screen_coords(self.mouse_pos);
+        let delta = mouse_screen_pos - self.last_mouse_screen_pos;
 
-        self.camera.translate(vec2(
-            delta.x / self.client_width as f32 * 2.0,
-            -1.0 * delta.y / self.client_height as f32 * 2.0,
-        ));
+        self.camera.translate(delta);
 
-        self.last_mouse_pos = mouse_pos;
+        self.last_mouse_screen_pos = mouse_screen_pos;
     }
 
     pub fn on_mouse_wheel(&mut self, delta: i16, x: i32, y: i32) {
@@ -480,6 +511,12 @@ impl Zoomer {
         let world_space = self.camera.screen_to_world_space_coords(screen_space);
 
         self.camera.zoom(delta, world_space);
+    }
+
+    pub fn on_key_down(&mut self, key: u8) {
+        if key == VK_F2 as u8 {
+            self.debug_window_is_open = !self.debug_window_is_open;
+        }
     }
 
     pub fn render(&mut self) {
@@ -528,16 +565,53 @@ impl Zoomer {
             ImGui_ImplWin32_NewFrame();
         }
 
+        let screen_pos = self.pixel_to_screen_coords(self.mouse_pos);
+        let world_pos = self.camera.screen_to_world_space_coords(screen_pos);
+
         let imgui = self.imgui.as_mut().unwrap();
         let ui = imgui.frame();
 
-        ui.show_demo_window(&mut true);
+        if self.debug_window_is_open {
+            ui.window("Debug")
+                .size([450.0, 0.0], Condition::FirstUseEver)
+                .resizable(false)
+                .build(|| {
+                    ui.text(format!(
+                        "Mouse pixel position = ({}, {})",
+                        self.mouse_pos.x, self.mouse_pos.y,
+                    ));
+                    ui.text(format!(
+                        "Mouse screen position = ({:.4}, {:.4})",
+                        screen_pos.x, screen_pos.y,
+                    ));
+                    ui.text(format!(
+                        "Mouse world position = ({:.4}, {:.4})",
+                        world_pos.x, world_pos.y,
+                    ));
+
+                    ui.separator();
+
+                    ui.text("Camera zoom");
+                    ui.same_line();
+                    ui.slider("##CameraZoom", 0.1, 10.0, &mut self.camera.zoom_factor);
+                });
+        }
 
         let draw_data = imgui.render();
 
         unsafe {
             ImGui_ImplOpenGL3_RenderDrawData(draw_data as *const _ as *mut _);
         }
+    }
+
+    /// Whether ImGui wants to receive mouse events instead of the application (ie. mouse is over an ImGui window)
+    pub fn imgui_wants_mouse_events(&self) -> bool {
+        self.imgui.as_ref().unwrap().io().want_capture_mouse
+    }
+
+    /// Whether ImGui wants to receive keyboard events instead of the application
+    pub fn imgui_wants_keyboard_events(&self) -> bool {
+        self.imgui.as_ref().unwrap().io().want_capture_keyboard
     }
 }
 

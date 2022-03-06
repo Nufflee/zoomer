@@ -3,7 +3,7 @@ use nalgebra_glm::{vec2_to_vec3, Mat4, Vec2};
 /// A 2D camera.
 pub struct Camera {
     translation: Vec2,
-    zoom_factor: f32,
+    pub zoom_factor: f32,
 }
 
 impl Default for Camera {

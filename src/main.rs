@@ -110,8 +110,8 @@ unsafe extern "system" fn window_proc(
     }
 
     let zoomer = &mut *zoomer;
-    let imgui_io = zoomer.imgui.as_mut().unwrap().io();
 
+    // SetCapture() allows from when mouse is outside of the window to be captured.
     if ImGui_ImplWin32_WndProcHandler(window, message, w_param, l_param) != 0 {
         return 1;
     }
@@ -124,7 +124,7 @@ unsafe extern "system" fn window_proc(
             zoomer.on_resize(width, height);
         }
         WM_LBUTTONDOWN => {
-            if imgui_io.want_capture_mouse {
+            if zoomer.imgui_wants_mouse_events() {
                 return 0;
             }
 
@@ -134,7 +134,7 @@ unsafe extern "system" fn window_proc(
             zoomer.on_left_mouse_down(x, y);
         }
         WM_MOUSEMOVE => {
-            if imgui_io.want_capture_mouse {
+            if zoomer.imgui_wants_mouse_events() {
                 return 0;
             }
 
@@ -144,7 +144,7 @@ unsafe extern "system" fn window_proc(
             zoomer.on_mouse_move(x, y, w_param & MK_LBUTTON != 0);
         }
         WM_MOUSEWHEEL => {
-            if imgui_io.want_capture_mouse {
+            if zoomer.imgui_wants_mouse_events() {
                 return 0;
             }
 
@@ -157,6 +157,15 @@ unsafe extern "system" fn window_proc(
             ScreenToClient(window, &mut point);
 
             zoomer.on_mouse_wheel(delta, point.x, point.y);
+        }
+        WM_KEYDOWN => {
+            if zoomer.imgui_wants_keyboard_events() {
+                return 0;
+            }
+
+            let key = w_param as u8;
+
+            zoomer.on_key_down(key);
         }
         WM_DESTROY => {
             PostQuitMessage(0);
