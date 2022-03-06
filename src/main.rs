@@ -44,7 +44,7 @@ fn main() {
         CreateWindowExA(
             0,
             std::mem::transmute(class as usize),
-            c_str_ptr!("Zoomer or something"),
+            c_str_ptr!("Zoomer"),
             WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -102,11 +102,11 @@ unsafe extern "system" fn window_proc(
 ) -> LRESULT {
     use winapi::um::winuser::*;
 
-    let zoomer = GetWindowLongPtrW(window, GWLP_USERDATA) as *mut Zoomer;
+    let zoomer = GetWindowLongPtrA(window, GWLP_USERDATA) as *mut Zoomer;
 
     if zoomer.is_null() {
         // zoomer has not been initialized yet.
-        return DefWindowProcW(window, message, w_param, l_param);
+        return DefWindowProcA(window, message, w_param, l_param);
     }
 
     let zoomer = &mut *zoomer;
