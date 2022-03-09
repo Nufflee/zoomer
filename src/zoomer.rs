@@ -73,14 +73,22 @@ pub struct Zoomer {
     mouse_pos: Vec2,
     /// Last mouse position in screen coordinate space.
     last_mouse_screen_pos: Vec2,
-    camera: Camera,
+    camera: Option<Camera>,
 }
 
 impl Zoomer {
-    pub fn init(&mut self, window: HWND) {
+    pub fn init(&mut self, window: HWND, client_width: i32, client_height: i32) {
         self.take_screenshot();
 
+        self.client_width = client_width as u32;
+        self.client_height = client_height as u32;
+
         self.hdc = Some(unsafe { GetDC(window) });
+
+        self.camera = Some(Camera::new(
+            0.25..=500.0,
+            vec2(1.0, self.aspect_ratio_ratio()),
+        ));
 
         self.create_opengl_context();
         self.init_render_env();
@@ -478,7 +486,7 @@ impl Zoomer {
     }
 
     /// Converts from screen pixel space ([0, client_width] x [0, client_height]) to normalized screen coordinates or NDC ([-1, 1] x [-1, 1])
-    pub fn pixel_to_screen_coords(&self, pixel_coords: Vec2) -> Vec2 {
+    pub fn pixel_to_screen_space(&self, pixel_coords: Vec2) -> Vec2 {
         vec2(
             pixel_coords.x / self.client_width as f32 * 2.0 - 1.0,
             -1.0 * (pixel_coords.y / self.client_height as f32 * 2.0 - 1.0),
@@ -486,7 +494,7 @@ impl Zoomer {
     }
 
     pub fn on_left_mouse_down(&mut self, x: i32, y: i32) {
-        self.last_mouse_screen_pos = self.pixel_to_screen_coords(vec2(x as f32, y as f32));
+        self.last_mouse_screen_pos = self.pixel_to_screen_space(vec2(x as f32, y as f32));
     }
 
     pub fn on_mouse_move(&mut self, x: i32, y: i32, left_mouse_down: bool) {
@@ -496,10 +504,10 @@ impl Zoomer {
             return;
         }
 
-        let mouse_screen_pos = self.pixel_to_screen_coords(self.mouse_pos);
+        let mouse_screen_pos = self.pixel_to_screen_space(self.mouse_pos);
         let delta = mouse_screen_pos - self.last_mouse_screen_pos;
 
-        self.camera.translate(delta);
+        self.camera.as_mut().unwrap().translate(delta);
 
         self.last_mouse_screen_pos = mouse_screen_pos;
     }
@@ -507,10 +515,13 @@ impl Zoomer {
     pub fn on_mouse_wheel(&mut self, delta: i16, x: i32, y: i32) {
         let delta = 1.0 + delta as f32 / 120.0 / 10.0;
 
-        let screen_space = self.pixel_to_screen_coords(vec2(x as f32, y as f32));
-        let world_space = self.camera.screen_to_world_space_coords(screen_space);
+        let screen_space = self.pixel_to_screen_space(vec2(x as f32, y as f32));
 
-        self.camera.zoom(delta, world_space);
+        let camera = self.camera.as_mut().unwrap();
+
+        let world_space = camera.screen_to_camera_space(screen_space);
+
+        camera.zoom(delta, world_space);
     }
 
     pub fn on_key_down(&mut self, key: u8) {
@@ -519,16 +530,18 @@ impl Zoomer {
         }
     }
 
-    pub fn render(&mut self) {
+    /// Returns the ratio of the client aspect ratio to the screenshot aspect ratio
+    pub fn aspect_ratio_ratio(&self) -> f32 {
         let client_aspect_ratio = self.client_width as f32 / self.client_height as f32;
         let screenshot = self.screenshot.as_ref().unwrap();
         let screenshot_aspect_ratio = screenshot.width() as f32 / screenshot.height() as f32;
-        let view_matrix = self.camera.to_homogenous()
-            * Mat4::new_nonuniform_scaling(&vec3(
-                1.0,
-                client_aspect_ratio / screenshot_aspect_ratio,
-                1.0,
-            ));
+
+        client_aspect_ratio / screenshot_aspect_ratio
+    }
+
+    pub fn render(&mut self) {
+        let view_matrix = self.camera.as_ref().unwrap().to_homogenous()
+            * Mat4::new_nonuniform_scaling(&vec3(1.0, self.aspect_ratio_ratio(), 1.0));
 
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT);
@@ -565,35 +578,49 @@ impl Zoomer {
             ImGui_ImplWin32_NewFrame();
         }
 
-        let screen_pos = self.pixel_to_screen_coords(self.mouse_pos);
-        let world_pos = self.camera.screen_to_world_space_coords(screen_pos);
+        let screen_space = self.pixel_to_screen_space(self.mouse_pos);
+
+        let camera = self.camera.as_mut().unwrap();
+
+        let camera_space = camera.screen_to_camera_space(screen_space);
+        let world_space = camera.screen_to_world_space(screen_space);
 
         let imgui = self.imgui.as_mut().unwrap();
         let ui = imgui.frame();
 
         if self.debug_window_is_open {
             ui.window("Debug")
-                .size([450.0, 0.0], Condition::FirstUseEver)
+                .size([650.0, 0.0], Condition::FirstUseEver)
                 .resizable(false)
                 .build(|| {
                     ui.text(format!(
-                        "Mouse pixel position = ({}, {})",
+                        "Mouse pixel space position = ({}, {})",
                         self.mouse_pos.x, self.mouse_pos.y,
                     ));
                     ui.text(format!(
-                        "Mouse screen position = ({:.4}, {:.4})",
-                        screen_pos.x, screen_pos.y,
+                        "Mouse screen space position = ({:.4}, {:.4})",
+                        screen_space.x, screen_space.y,
                     ));
                     ui.text(format!(
-                        "Mouse world position = ({:.4}, {:.4})",
-                        world_pos.x, world_pos.y,
+                        "Mouse world space position = ({:.4}, {:.4})",
+                        world_space.x, world_space.y,
+                    ));
+                    ui.text(format!(
+                        "Mouse camera space position = ({:.4}, {:.4})",
+                        camera_space.x, camera_space.y,
                     ));
 
                     ui.separator();
 
+                    ui.text(format!(
+                        "Camera position = ({:.4}, {:.4})",
+                        camera.position().x,
+                        camera.position().y
+                    ));
+
                     ui.text("Camera zoom");
                     ui.same_line();
-                    ui.slider("##CameraZoom", 0.1, 10.0, &mut self.camera.zoom_factor);
+                    ui.slider("##CameraZoom", 0.1, 10.0, &mut camera.zoom_factor);
                 });
         }
 

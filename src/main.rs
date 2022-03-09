@@ -9,7 +9,7 @@ mod zoomer;
 use winapi::{
     shared::{
         minwindef::*,
-        windef::{HWND, POINT},
+        windef::{HWND, POINT, RECT},
         windowsx::{GET_X_LPARAM, GET_Y_LPARAM},
     },
     um::{libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount, winuser::*},
@@ -63,7 +63,15 @@ fn main() {
 
     let mut zoomer = Zoomer::default();
 
-    zoomer.init(window);
+    let (client_width, client_height) = unsafe {
+        let mut rect = RECT::default();
+
+        GetClientRect(window, &mut rect);
+
+        (rect.right - rect.left, rect.bottom - rect.top)
+    };
+
+    zoomer.init(window, client_width, client_height);
 
     // Store a pointer to the zoomer object in the window so that we can access it from the `window_proc`.
     unsafe {

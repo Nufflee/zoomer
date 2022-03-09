@@ -128,12 +128,12 @@ pub fn take_screenshot(
                 let pixel_index =
                     ((x + y * width) * Screenshot::BYTES_PER_PIXEL + padding) as usize;
 
-                let b = pixel_bytes[pixel_index + 0];
+                let b = pixel_bytes[pixel_index];
                 let g = pixel_bytes[pixel_index + 1];
                 let r = pixel_bytes[pixel_index + 2];
                 let a = pixel_bytes[pixel_index + 3];
 
-                pixel_bytes[pixel_index + 0] = r;
+                pixel_bytes[pixel_index] = r;
                 pixel_bytes[pixel_index + 1] = g;
                 pixel_bytes[pixel_index + 2] = b;
                 pixel_bytes[pixel_index + 3] = a;

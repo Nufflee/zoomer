@@ -1,4 +1,4 @@
-use std::{convert::TryInto, ffi::CString, num::ParseIntError, os::raw::c_char, ptr::null};
+use std::{convert::TryInto, ffi::CString, num::ParseIntError};
 
 use winapi::{
     ctypes::c_void,
