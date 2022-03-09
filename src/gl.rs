@@ -256,3 +256,6 @@ declare_opengl_function!(
 declare_opengl_function!(
     fn wglGetExtensionsStringARB(hdc: HDC) -> *const GLchar,
 );
+// https://www.khronos.org/registry/OpenGL/extensions/EXT/WGL_EXT_swap_control.txt
+declare_opengl_function!(fn wglSwapIntervalEXT(interval: i32) -> i32);
+declare_opengl_function!(fn wglGetSwapIntervalEXT() -> i32);

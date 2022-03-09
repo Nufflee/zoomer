@@ -19,6 +19,8 @@ use ffi::c_str_ptr;
 use imgui_impl::*;
 use zoomer::Zoomer;
 
+use crate::gl::wglSwapIntervalEXT;
+
 const WIDTH: i32 = 1920;
 const HEIGHT: i32 = 1080;
 
@@ -78,12 +80,14 @@ fn main() {
         SetWindowLongPtrA(window, GWLP_USERDATA, &mut zoomer as *mut _ as isize);
     }
 
+    // Make sure V-Sync is enabled. It seems like this is the default, but just in case.
+    unsafe { wglSwapIntervalEXT(1) };
+
     let _start_time = unsafe { GetTickCount() };
+    let mut message = MSG::default();
 
     unsafe {
         ShowWindow(window, SW_SHOW);
-
-        let mut message = MSG::default();
 
         'main: loop {
             while PeekMessageA(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
