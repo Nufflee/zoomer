@@ -1,4 +1,4 @@
-#![allow(non_upper_case_globals, non_snake_case)]
+#![allow(non_upper_case_globals, non_snake_case, dead_code)]
 
 use crate::ffi::c_str_ptr;
 use std::ffi::c_void;
