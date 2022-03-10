@@ -389,7 +389,7 @@ impl Zoomer {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-            let screenshot = self.screenshot.as_ref().unwrap();
+            let screenshot = self.screenshot.as_mut().unwrap();
 
             glTexImage2D(
                 GL_TEXTURE_2D,
@@ -400,7 +400,7 @@ impl Zoomer {
                 0,
                 GL_RGBA as GLenum,
                 GL_UNSIGNED_BYTE,
-                screenshot.pixel_bytes() as *const _ as *const GLvoid,
+                screenshot.take_pixel_bytes().as_ptr() as *const _ as *const GLvoid,
             );
 
             glBindTexture(GL_TEXTURE_2D, 0);

@@ -15,7 +15,8 @@ use winapi::{
 pub struct Screenshot {
     width: u32,
     height: u32,
-    pixel_bytes: Vec<u8>,
+    /// Pixel bytes are taken out of the screenshot and deallocated after being transferred to the GPU
+    pixel_bytes: Option<Vec<u8>>,
     /// Width stride in *bytes*.
     stride: u32,
 }
@@ -31,8 +32,10 @@ impl Screenshot {
         self.height
     }
 
-    pub fn pixel_bytes(&self) -> &[u8] {
-        &self.pixel_bytes
+    pub fn take_pixel_bytes(&mut self) -> Vec<u8> {
+        self.pixel_bytes
+            .take()
+            .expect("screenshot pixel bytes were already taken")
     }
 
     pub fn stride(&self) -> u32 {
@@ -143,7 +146,7 @@ pub fn take_screenshot(
         Screenshot {
             width,
             height,
-            pixel_bytes,
+            pixel_bytes: Some(pixel_bytes),
             stride,
         }
     }
