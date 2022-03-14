@@ -515,13 +515,11 @@ impl Zoomer {
     pub fn on_mouse_wheel(&mut self, delta: i16, x: i32, y: i32) {
         let delta = 1.0 + delta as f32 / 120.0 / 10.0;
 
-        let screen_space = self.pixel_to_screen_space(vec2(x as f32, y as f32));
+        let screen_point = self.pixel_to_screen_space(vec2(x as f32, y as f32));
 
         let camera = self.camera.as_mut().unwrap();
 
-        let world_space = camera.screen_to_camera_space(screen_space);
-
-        camera.zoom(delta, world_space);
+        camera.zoom(delta, screen_point);
     }
 
     pub fn on_key_down(&mut self, key: u8) {
@@ -537,6 +535,10 @@ impl Zoomer {
         let screenshot_aspect_ratio = screenshot.width() as f32 / screenshot.height() as f32;
 
         client_aspect_ratio / screenshot_aspect_ratio
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        self.camera.as_mut().unwrap().update(dt);
     }
 
     pub fn render(&mut self) {
@@ -639,6 +641,10 @@ impl Zoomer {
     /// Whether ImGui wants to receive keyboard events instead of the application
     pub fn imgui_wants_keyboard_events(&self) -> bool {
         self.imgui.as_ref().unwrap().io().want_capture_keyboard
+    }
+
+    pub(crate) fn on_left_mouse_up(&mut self) {
+        self.camera.as_mut().unwrap().clamp_me_daddy();
     }
 }
 

@@ -6,13 +6,15 @@ mod imgui_impl;
 mod screenshot;
 mod zoomer;
 
+use std::time::Instant;
+
 use winapi::{
     shared::{
         minwindef::*,
         windef::{HWND, POINT, RECT},
         windowsx::{GET_X_LPARAM, GET_Y_LPARAM},
     },
-    um::{libloaderapi::GetModuleHandleA, sysinfoapi::GetTickCount, winuser::*},
+    um::{libloaderapi::GetModuleHandleA, winuser::*},
 };
 
 use ffi::c_str_ptr;
@@ -83,8 +85,8 @@ fn main() {
     // Make sure V-Sync is enabled. It seems like this is the default, but just in case.
     unsafe { wglSwapIntervalEXT(1) };
 
-    let _start_time = unsafe { GetTickCount() };
     let mut message = MSG::default();
+    let mut dt_timer = Instant::now();
 
     unsafe {
         ShowWindow(window, SW_SHOW);
@@ -99,9 +101,10 @@ fn main() {
                 DispatchMessageA(&message);
             }
 
-            let _time = GetTickCount() - _start_time;
-
             zoomer.render();
+            zoomer.update(dt_timer.elapsed().as_secs_f32());
+
+            dt_timer = Instant::now();
         }
     }
 }
@@ -144,6 +147,9 @@ unsafe extern "system" fn window_proc(
             let y = GET_Y_LPARAM(l_param);
 
             zoomer.on_left_mouse_down(x, y);
+        }
+        WM_LBUTTONUP => {
+            zoomer.on_left_mouse_up();
         }
         WM_MOUSEMOVE => {
             if zoomer.imgui_wants_mouse_events() {

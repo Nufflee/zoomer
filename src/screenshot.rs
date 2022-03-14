@@ -32,6 +32,7 @@ impl Screenshot {
         self.height
     }
 
+    /// Move the pixel bytes `Vec` out of the screenshot so it can be dropped (deallocated) by the caller.
     pub fn take_pixel_bytes(&mut self) -> Vec<u8> {
         self.pixel_bytes
             .take()
