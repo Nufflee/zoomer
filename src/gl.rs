@@ -99,6 +99,9 @@ pub const GL_DEBUG_SEVERITY_MEDIUM: GLenum = 0x9147;
 pub const GL_DEBUG_SEVERITY_LOW: GLenum = 0x9148;
 pub const GL_DEBUG_SEVERITY_NOTIFICATION: GLenum = 0x826B;
 
+// glEnable
+pub const GL_DEBUG_OUTPUT_SYNCHRONOUS: GLenum = 0x8242;
+
 pub fn shader_type_to_str(type_: GLenum) -> &'static str {
     match type_ {
         GL_VERTEX_SHADER => "vertex",
@@ -121,6 +124,8 @@ pub fn debug_type_to_str(type_: GLenum) -> &'static str {
 
 // https://www.khronos.org/registry/OpenGL/api/GL/glcorearb.h
 extern "C" {
+    pub fn glEnable(cap: GLenum);
+
     pub fn glGetString(name: GLenum) -> *const GLubyte;
     pub fn glGetError() -> GLenum;
 
@@ -228,8 +233,6 @@ declare_opengl_function!(
         infoLog: *mut GLchar,
     )
 );
-
-declare_opengl_function!(fn glEnable(cap: GLenum));
 
 declare_opengl_function!(fn glGenTextures(n: GLsizei, textures: *mut GLuint));
 declare_opengl_function!(fn glBindTexture(target: GLenum, texture: GLuint));

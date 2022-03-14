@@ -1,3 +1,4 @@
+use std::backtrace::Backtrace;
 use std::ffi::c_void;
 use std::fs;
 use std::{
@@ -53,6 +54,8 @@ void main() {
     // color = vec4(v_TexCoord, 0.0, 1.0);
 }
 "#;
+
+const DEBUG_GL_ERROR_BACKTRACE: bool = true;
 
 #[derive(Default)]
 pub struct Zoomer {
@@ -164,6 +167,10 @@ impl Zoomer {
         });
 
         unsafe {
+            if DEBUG_GL_ERROR_BACKTRACE {
+                glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+            }
+
             glDebugMessageCallback(gl_message_callback, std::ptr::null_mut());
         }
     }
@@ -677,6 +684,10 @@ unsafe extern "C" fn gl_message_callback(
     }
 
     let color = severity_to_color(severity);
+
+    if DEBUG_GL_ERROR_BACKTRACE && type_ == GL_DEBUG_TYPE_ERROR {
+        eprintln!("{}", Backtrace::force_capture());
+    }
 
     console::writeln(
         console::text(format!(

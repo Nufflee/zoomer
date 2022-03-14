@@ -5,8 +5,9 @@
 This applications interacts with Win32 API and OpenGL directly, without using any window management or OpenGL loader libraries - the goal is to use as few dependencies as possible for simplicity.
 
 ## > running
-**IMPORTANT**: The `x86_64-pc-windows-gnu` Rust target needs to be used because the `stb` library uses [`rust-bindgen`](https://github.com/rust-lang/rust-bindgen) which requires `clang`.
+
+Note: Nightly Rust is currently required.
 
 ```sh
-$ cargo run --target x86_64-pc-windows-gnu
+$ cargo run --release
 ```

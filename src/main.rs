@@ -1,3 +1,5 @@
+#![feature(backtrace)]
+
 mod camera;
 mod console;
 mod ffi;
