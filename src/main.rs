@@ -5,6 +5,7 @@ mod console;
 mod ffi;
 mod gl;
 mod imgui_impl;
+mod interpolation;
 mod screenshot;
 mod zoomer;
 

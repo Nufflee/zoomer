@@ -168,6 +168,7 @@ impl Zoomer {
 
         unsafe {
             if DEBUG_GL_ERROR_BACKTRACE {
+                // Debug output needs to be synchronized in order to obtain backtraces.
                 glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
             }
 
@@ -626,10 +627,6 @@ impl Zoomer {
                         camera.position().x,
                         camera.position().y
                     ));
-
-                    ui.text("Camera zoom");
-                    ui.same_line();
-                    ui.slider("##CameraZoom", 0.1, 10.0, &mut camera.zoom_factor);
                 });
         }
 
