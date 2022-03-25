@@ -7,7 +7,7 @@ use crate::interpolation::{ExponentialSmoothing, InterpolatedScalar, Interpolate
 /// A 2D camera.
 pub struct Camera {
     /// The position of the camera in camera space.
-    position: InterpolatedVector<f32, ExponentialSmoothing<f32>, 2>,
+    position: InterpolatedVector<f32, 2, ExponentialSmoothing<f32>>,
     zoom_factor: InterpolatedScalar<f32, ExponentialSmoothing<f32>>,
 
     zoom_range: RangeInclusive<f32>,

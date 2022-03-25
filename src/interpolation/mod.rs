@@ -7,14 +7,14 @@ mod interpolators;
 use interpolators::Interpolator;
 pub use interpolators::{ExponentialSmoothing, LinearInterpolation};
 
-pub struct InterpolatedVector<T: RealNumber, I: Interpolator<T, R>, const R: usize> {
+// TODO: Is there a way to get make this generic cleaner, getting rid of R?
+pub struct InterpolatedVector<T: RealNumber, const R: usize, I: Interpolator<T, R>> {
     current: TVec<T, R>,
     target: TVec<T, R>,
     interpolator: I,
 }
 
-// TODO: Is there a way to get rid of the R parameter?
-impl<T: RealNumber, I: Interpolator<T, R>, const R: usize> InterpolatedVector<T, I, R> {
+impl<T: RealNumber, const R: usize, I: Interpolator<T, R>> InterpolatedVector<T, R, I> {
     pub fn new(initial: TVec<T, R>, interpolator: I) -> Self {
         Self {
             current: initial,
@@ -46,7 +46,7 @@ impl<T: RealNumber, I: Interpolator<T, R>, const R: usize> InterpolatedVector<T,
     }
 }
 
-pub struct InterpolatedScalar<T: RealNumber, I: Interpolator<T, 1>>(InterpolatedVector<T, I, 1>);
+pub struct InterpolatedScalar<T: RealNumber, I: Interpolator<T, 1>>(InterpolatedVector<T, 1, I>);
 
 impl<T: RealNumber, I: Interpolator<T, 1>> InterpolatedScalar<T, I> {
     pub fn new(initial: T, interpolator: I) -> Self {

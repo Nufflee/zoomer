@@ -85,7 +85,7 @@ fn main() {
         SetWindowLongPtrA(window, GWLP_USERDATA, &mut zoomer as *mut _ as isize);
     }
 
-    // Make sure V-Sync is enabled. It seems like this is the default, but just in case.
+    // Enable V-Sync. It seems like this is the default, but just in case.
     unsafe { wglSwapIntervalEXT(1) };
 
     let mut message = MSG::default();
