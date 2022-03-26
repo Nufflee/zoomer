@@ -217,6 +217,7 @@ declare_opengl_function!(fn glGetProgramiv(program: GLuint, pname: GLenum, param
 declare_opengl_function!(fn glUseProgram(program: GLuint));
 declare_opengl_function!(fn glGetUniformLocation(program: GLuint, name: *const GLchar) -> GLint);
 declare_opengl_function!(fn glUniform1i(location: GLint, v0: GLint));
+declare_opengl_function!(fn glUniform2fv(location: GLint, count: GLsizei, value: *const GLfloat));
 declare_opengl_function!(
     fn glUniformMatrix4fv(
         location: GLint,

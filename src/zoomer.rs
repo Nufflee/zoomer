@@ -9,12 +9,13 @@ use std::{
 use crate::camera::Camera;
 use crate::ffi::c_str_ptr;
 use crate::gl::*;
+use crate::highlighter::Highlighter;
 use crate::imgui_impl::*;
 use crate::screenshot::take_screenshot;
 use crate::{console, screenshot::Screenshot};
 
 use imgui::{Condition, FontConfig, FontSource};
-use nalgebra_glm::{vec2, vec3, Mat4, Vec2, Vec3};
+use nalgebra_glm::{vec2, vec3, vec4, Mat4, Vec2, Vec3};
 use winapi::{
     shared::windef::{HDC, HWND},
     um::{wingdi::*, winuser::*},
@@ -49,37 +50,82 @@ out vec4 color;
 
 uniform sampler2D u_Texture;
 
+uniform bool u_HighlighterOn;
+uniform vec2 u_MousePosition;
+uniform vec2 u_HighlighterRadius;
+
 void main() {
     color = texture(u_Texture, v_TexCoord);
-    // color = vec4(v_TexCoord, 0.0, 1.0);
+
+    vec2 distance = pow(v_TexCoord - u_MousePosition, vec2(2.0)) / pow(u_HighlighterRadius, vec2(2.0));
+
+    if (distance.x + distance.y > 1.0) {
+        color *= vec4(0.5, 0.5, 0.5, 1.0);
+    }
 }
 "#;
 
 const DEBUG_GL_ERROR_BACKTRACE: bool = true;
 
-#[derive(Default)]
 pub struct Zoomer {
     pub client_width: u32,
     pub client_height: u32,
 
-    screenshot: Option<Screenshot>,
     hdc: Option<HDC>,
+    imgui: Option<imgui::Context>,
+    screenshot: Option<Screenshot>,
+
     vao_id: GLuint,
     texture_id: GLuint,
     index_buffer_id: GLuint,
     shader_program_id: GLuint,
+
     view_matrix_uniform: GLint,
-    imgui: Option<imgui::Context>,
+    highlighter_radius_uniform: GLint,
+    mouse_position_uniform: GLint,
+
     debug_window_is_open: bool,
+
+    highlighter: Highlighter,
 
     /// Current mouse position in pixel coordinate space.
     mouse_pos: Vec2,
     /// Last mouse position in screen coordinate space.
     last_mouse_screen_pos: Vec2,
+
     camera: Option<Camera>,
 }
 
 impl Zoomer {
+    pub fn new() -> Self {
+        Self {
+            client_width: 0,
+            client_height: 0,
+
+            hdc: None,
+            imgui: None,
+            screenshot: None,
+
+            vao_id: 0,
+            texture_id: 0,
+            index_buffer_id: 0,
+            shader_program_id: 0,
+
+            view_matrix_uniform: -1,
+            highlighter_radius_uniform: -1,
+            mouse_position_uniform: -1,
+
+            debug_window_is_open: false,
+
+            highlighter: Highlighter::new(),
+
+            mouse_pos: Vec2::zeros(),
+            last_mouse_screen_pos: Vec2::zeros(),
+
+            camera: None,
+        }
+    }
+
     pub fn init(&mut self, window: HWND, client_width: i32, client_height: i32) {
         self.take_screenshot();
 
@@ -137,13 +183,13 @@ impl Zoomer {
         }
 
         #[rustfmt::skip]
-            let attribs = [
-                WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-                WGL_CONTEXT_MINOR_VERSION_ARB, 2,
-                WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
-                WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-                0 // null-terminated
-            ];
+        let attribs = [
+            WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+            WGL_CONTEXT_MINOR_VERSION_ARB, 2,
+            WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
+            WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+            0 // null-terminated
+        ];
 
         let opengl_handle =
             unsafe { wglCreateContextAttribsARB(hdc, std::ptr::null_mut(), attribs.as_ptr()) };
@@ -381,6 +427,24 @@ impl Zoomer {
 
         self.view_matrix_uniform = view_matrix_uniform;
 
+        self.mouse_position_uniform =
+            unsafe { glGetUniformLocation(shader_program, c_str_ptr!("u_MousePosition")) };
+        assert!(self.mouse_position_uniform != -1);
+
+        self.highlighter_radius_uniform =
+            unsafe { glGetUniformLocation(shader_program, c_str_ptr!("u_HighlighterRadius")) };
+        assert!(self.highlighter_radius_uniform != -1);
+
+        unsafe {
+            glUseProgram(shader_program);
+            glUniform2fv(
+                self.highlighter_radius_uniform,
+                1,
+                vec2(f32::INFINITY, f32::INFINITY).as_ptr(),
+            );
+            glUseProgram(0);
+        }
+
         let texture = unsafe {
             let mut texture = 0;
 
@@ -489,8 +553,6 @@ impl Zoomer {
         unsafe {
             glViewport(0, 0, self.client_width, self.client_height);
         }
-
-        self.render();
     }
 
     /// Converts from screen pixel space ([0, client_width] x [0, client_height]) to normalized screen coordinates or NDC ([-1, 1] x [-1, 1])
@@ -499,6 +561,20 @@ impl Zoomer {
             pixel_coords.x / self.client_width as f32 * 2.0 - 1.0,
             -1.0 * (pixel_coords.y / self.client_height as f32 * 2.0 - 1.0),
         )
+    }
+
+    pub fn pixel_to_uv_space(&self, pixel_coords: Vec2) -> Vec2 {
+        let mut mouse_uv_pos = self
+            .camera
+            .as_ref()
+            .unwrap()
+            .screen_to_world_space(self.pixel_to_screen_space(pixel_coords));
+
+        mouse_uv_pos.y *= -1.0 / self.aspect_ratio_ratio();
+        mouse_uv_pos += vec2(1.0, 1.0);
+        mouse_uv_pos /= 2.0;
+
+        mouse_uv_pos
     }
 
     pub fn on_left_mouse_down(&mut self, x: i32, y: i32) {
@@ -520,33 +596,80 @@ impl Zoomer {
         self.last_mouse_screen_pos = mouse_screen_pos;
     }
 
-    pub fn on_mouse_wheel(&mut self, delta: i16, x: i32, y: i32) {
-        let delta = 1.0 + delta as f32 / 120.0 / 10.0;
+    pub fn on_mouse_wheel(&mut self, delta: i16, x: i32, y: i32, ctrl_is_down: bool) {
+        let delta = delta as f32 / 120.0 / 10.0;
+
+        if ctrl_is_down && self.highlighter.is_enabled() {
+            self.highlighter
+                .set_radius(self.highlighter.radius() * (1.0 + delta * 2.0));
+
+            return;
+        }
 
         let screen_point = self.pixel_to_screen_space(vec2(x as f32, y as f32));
 
         let camera = self.camera.as_mut().unwrap();
 
-        camera.zoom(delta, screen_point);
+        camera.zoom(1.0 + delta, screen_point);
     }
 
     pub fn on_key_down(&mut self, key: u8) {
         if key == VK_F2 as u8 {
             self.debug_window_is_open = !self.debug_window_is_open;
         }
+
+        if key == b'C' {
+            self.highlighter.set_enabled(!self.highlighter.is_enabled());
+        }
+    }
+
+    pub fn screenshot_aspect_ratio(&self) -> f32 {
+        let screenshot = self.screenshot.as_ref().unwrap();
+
+        screenshot.width() as f32 / screenshot.height() as f32
     }
 
     /// Returns the ratio of the client aspect ratio to the screenshot aspect ratio
     pub fn aspect_ratio_ratio(&self) -> f32 {
         let client_aspect_ratio = self.client_width as f32 / self.client_height as f32;
-        let screenshot = self.screenshot.as_ref().unwrap();
-        let screenshot_aspect_ratio = screenshot.width() as f32 / screenshot.height() as f32;
+        let screenshot_aspect_ratio = self.screenshot_aspect_ratio();
 
         client_aspect_ratio / screenshot_aspect_ratio
     }
 
     pub fn update(&mut self, dt: f32) {
         self.camera.as_mut().unwrap().update(dt);
+        self.highlighter.update(dt);
+
+        let mouse_uv_pos = self.pixel_to_uv_space(self.mouse_pos);
+
+        unsafe {
+            glUseProgram(self.shader_program_id);
+            glUniform2fv(
+                self.mouse_position_uniform,
+                1,
+                vec4(mouse_uv_pos.x, mouse_uv_pos.y, 0.0, 1.0).as_ptr(),
+            );
+            glUseProgram(0);
+        }
+
+        let radius_uv =
+            vec2(self.highlighter.radius(), self.highlighter.radius()).component_mul(&vec2(
+                1.0 / self.client_width as f32,
+                1.0 / self.client_height as f32,
+            ));
+
+        let highlighter_radius_uv = vec2(radius_uv.x, radius_uv.y / self.aspect_ratio_ratio());
+
+        unsafe {
+            glUseProgram(self.shader_program_id);
+            glUniform2fv(
+                self.highlighter_radius_uniform,
+                1,
+                highlighter_radius_uv.as_ptr(),
+            );
+            glUseProgram(0);
+        }
     }
 
     pub fn render(&mut self) {
@@ -589,6 +712,7 @@ impl Zoomer {
         }
 
         let screen_space = self.pixel_to_screen_space(self.mouse_pos);
+        let uv_space = self.pixel_to_uv_space(self.mouse_pos);
 
         let camera = self.camera.as_mut().unwrap();
 
@@ -618,6 +742,10 @@ impl Zoomer {
                     ui.text(format!(
                         "Mouse camera space position = ({:.4}, {:.4})",
                         camera_space.x, camera_space.y,
+                    ));
+                    ui.text(format!(
+                        "Mouse UV space position = ({:.4}, {:.4})",
+                        uv_space.x, uv_space.y
                     ));
 
                     ui.separator();

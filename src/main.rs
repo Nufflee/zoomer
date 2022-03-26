@@ -1,13 +1,15 @@
 #![feature(backtrace)]
 
 mod camera;
+mod highlighter;
+mod screenshot;
+mod zoomer;
+
 mod console;
 mod ffi;
 mod gl;
 mod imgui_impl;
 mod interpolation;
-mod screenshot;
-mod zoomer;
 
 use std::time::Instant;
 
@@ -68,7 +70,7 @@ fn main() {
     let hdc = unsafe { GetDC(window) };
     assert!(!hdc.is_null());
 
-    let mut zoomer = Zoomer::default();
+    let mut zoomer = Zoomer::new();
 
     let (client_width, client_height) = unsafe {
         let mut rect = RECT::default();
@@ -174,10 +176,9 @@ unsafe extern "system" fn window_proc(
             let y = GET_Y_LPARAM(l_param);
 
             let mut point = POINT { x, y };
-
             ScreenToClient(window, &mut point);
 
-            zoomer.on_mouse_wheel(delta, point.x, point.y);
+            zoomer.on_mouse_wheel(delta, point.x, point.y, w_param & MK_CONTROL != 0);
         }
         WM_KEYDOWN => {
             if zoomer.imgui_wants_keyboard_events() {
