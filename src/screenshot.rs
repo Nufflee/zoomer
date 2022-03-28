@@ -90,6 +90,11 @@ pub fn take_screenshot(
         let stride = round_up_to_power_of_2(width as u32 * Screenshot::BYTES_PER_PIXEL, 4);
         let bitmap_size = stride * height as u32;
 
+        // Sanity check, bitmap should contain an integer amount of pixels.
+        assert!(bitmap_size % Screenshot::BYTES_PER_PIXEL == 0);
+
+        let mut pixel_bytes = vec![0u8; bitmap_size as usize];
+
         let mut bitmap_info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: size_of::<BITMAPINFOHEADER>() as u32,
@@ -103,8 +108,6 @@ pub fn take_screenshot(
             },
             ..Default::default()
         };
-
-        let mut pixel_bytes = vec![0u8; bitmap_size as usize];
 
         let ret = GetDIBits(
             memory_dc,
@@ -120,8 +123,6 @@ pub fn take_screenshot(
         ReleaseDC(handle, window_dc);
         DeleteDC(memory_dc);
         DeleteObject(bitmap_handle as *mut c_void);
-
-        assert!(pixel_bytes.len() % 3 == 0);
 
         // Convert from BGRA to RGBA.
         let padding_per_row = stride - width * Screenshot::BYTES_PER_PIXEL;
@@ -153,11 +154,14 @@ pub fn take_screenshot(
     }
 }
 
-fn round_up_to_power_of_2<T: PrimInt>(value: T, power: T) -> T {
-    // Make sure `value` is a power of 2
-    debug_assert!(power.count_ones() == 1);
+// Rounds `value` up to the next multiple of `power_of_2` (`power_of_2 = 2^x`, `x` is a positive integer).
+fn round_up_to_power_of_2<T: PrimInt>(value: T, power_of_2: T) -> T {
+    debug_assert!(
+        power_of_2.count_ones() == 1,
+        "power_of_2 is not a power of 2"
+    );
 
-    (value + (power - T::one())) & (!(power - T::one()))
+    (value + (power_of_2 - T::one())) & (!(power_of_2 - T::one()))
 }
 
 #[cfg(test)]

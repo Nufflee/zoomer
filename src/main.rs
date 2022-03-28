@@ -18,8 +18,13 @@ use winapi::{
         minwindef::*,
         windef::{HWND, POINT, RECT},
         windowsx::{GET_X_LPARAM, GET_Y_LPARAM},
+        winerror::S_OK,
     },
-    um::{libloaderapi::GetModuleHandleA, winuser::*},
+    um::{
+        libloaderapi::GetModuleHandleA,
+        shellscalingapi::{SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_AWARE},
+        winuser::*,
+    },
 };
 
 use ffi::c_str_ptr;
@@ -69,6 +74,10 @@ fn main() {
 
     let hdc = unsafe { GetDC(window) };
     assert!(!hdc.is_null());
+
+    unsafe {
+        assert_eq!(SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE), S_OK);
+    }
 
     let mut zoomer = Zoomer::new();
 
