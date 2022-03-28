@@ -19,6 +19,8 @@ pub type GLbitfield = u32;
 pub type GLvoid = c_void;
 pub type GLchar = c_char;
 
+// Source: https://www.khronos.org/registry/OpenGL/api/GL/glcorearb.h
+
 // glGetString
 pub const GL_VERSION: GLenum = 0x1F02;
 
@@ -122,18 +124,29 @@ pub fn debug_type_to_str(type_: GLenum) -> &'static str {
     }
 }
 
-// https://www.khronos.org/registry/OpenGL/api/GL/glcorearb.h
+// OpenGL 1.0 and 1.1 methods should be linked statically. No one knows why.
 extern "C" {
+    // OpenGL 1.0
     pub fn glEnable(cap: GLenum);
 
+    // OpenGL 1.0
     pub fn glGetString(name: GLenum) -> *const GLubyte;
+    // OpenGL 1.0
     pub fn glGetError() -> GLenum;
 
-    pub fn glClearColor(red: GLclampf, green: GLclampf, blue: GLclampf, alpha: GLclampf);
+    // OpenGL 1.0
     pub fn glClear(mask: GLbitfield);
+    // OpenGL 1.0
+    pub fn glClearColor(red: GLclampf, green: GLclampf, blue: GLclampf, alpha: GLclampf);
 
+    // OpenGL 1.0
     pub fn glViewport(x: GLint, y: GLint, width: GLsizei, height: GLsizei);
 
+    // OpenGL 1.1
+    pub fn glBindTexture(target: GLenum, texture: GLuint);
+    // OpenGL 1.1
+    pub fn glGenTextures(n: GLsizei, textures: *mut GLuint);
+    // OpenGL 1.0
     pub fn glTexImage2D(
         target: GLenum,
         level: GLint,
@@ -145,9 +158,16 @@ extern "C" {
         type_: GLenum,
         pixels: *const GLvoid,
     );
+    // OpenGL 1.0
     pub fn glTexParameteri(target: GLenum, pname: GLenum, param: GLint);
+
+    // OpenGL 1.1
+    pub fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei);
+    // OpenGL 1.1
+    pub fn glDrawElements(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const GLvoid);
 }
 
+// This should only be used for OpenGL 1.2 and greater functions. Again, no one knows why.
 macro_rules! declare_opengl_function {
     (fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) $(,)?) => {
         declare_opengl_function!(fn $name($($arg: $arg_ty),*) -> ());
@@ -189,16 +209,6 @@ declare_opengl_function!(fn glEnableVertexAttribArray(index: GLuint));
 declare_opengl_function!(fn glGenVertexArrays(n: GLsizei, arrays: *mut GLuint));
 declare_opengl_function!(fn glBindVertexArray(array: GLuint));
 
-declare_opengl_function!(fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei));
-declare_opengl_function!(
-    fn glDrawElements(
-        mode: GLenum,
-        count: GLsizei,
-        type_: GLenum,
-        indices: *const GLvoid,
-    )
-);
-
 declare_opengl_function!(fn glCreateShader(shaderType: GLenum) -> GLuint);
 declare_opengl_function!(
     fn glShaderSource(
@@ -235,8 +245,6 @@ declare_opengl_function!(
     )
 );
 
-declare_opengl_function!(fn glGenTextures(n: GLsizei, textures: *mut GLuint));
-declare_opengl_function!(fn glBindTexture(target: GLenum, texture: GLuint));
 declare_opengl_function!(fn glActiveTexture(texture: GLenum));
 declare_opengl_function!(fn glGenerateMipmap(target: GLenum));
 
