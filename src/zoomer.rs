@@ -8,11 +8,11 @@ use std::{
 
 use crate::camera::Camera;
 use crate::ffi::c_str_ptr;
-use crate::gl::*;
 use crate::highlighter::Highlighter;
 use crate::imgui_impl::*;
 use crate::screenshot::take_screenshot;
 use crate::{console, screenshot::Screenshot};
+use crate::{gl::*, monitors};
 
 use imgui::{Condition, FontConfig, FontSource};
 use nalgebra_glm::{vec2, vec3, vec4, Mat4, Vec2, Vec3};
@@ -517,10 +517,17 @@ impl Zoomer {
     }
 
     fn take_screenshot(&mut self) {
-        let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) as u32 };
-        let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) as u32 };
-        let start_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
-        let start_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+        let monitors = monitors::enumerate();
+
+        assert!(!monitors.is_empty(), "no monitors found");
+
+        let (start_x, start_y) = monitors.iter().fold((0, 0), |min_start, monitor| {
+            (monitor.x.min(min_start.0), monitor.y.min(min_start.1))
+        });
+
+        let width = monitors.iter().fold(0, |agg, monitor| monitor.width + agg);
+
+        let height = monitors.iter().map(|monitor| monitor.height).max().unwrap();
 
         let timer = std::time::Instant::now();
 
@@ -528,8 +535,8 @@ impl Zoomer {
             std::ptr::null_mut(),
             start_x,
             start_y,
-            width,
-            height,
+            width as u32,
+            height as u32,
         ));
         let screenshot = self.screenshot.as_ref().unwrap();
 

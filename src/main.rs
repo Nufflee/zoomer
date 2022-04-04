@@ -10,6 +10,7 @@ mod ffi;
 mod gl;
 mod imgui_impl;
 mod interpolation;
+mod monitors;
 
 use std::time::Instant;
 
