@@ -2,10 +2,11 @@ use std::{convert::TryInto, ffi::CString, num::ParseIntError};
 
 use winapi::{
     ctypes::c_void,
-    shared::ntdef::HANDLE,
+    shared::{minwindef::TRUE, ntdef::HANDLE},
     um::{
         consoleapi::{GetConsoleMode, SetConsoleMode, WriteConsoleA},
         processenv::GetStdHandle,
+        wincon::{ENABLE_PROCESSED_OUTPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING},
     },
 };
 
@@ -64,6 +65,7 @@ impl Color {
     pub fn from_hex(hex: &str) -> Result<Self, ParseIntError> {
         let trimmed = hex.trim_start_matches('#');
 
+        // TODO: Probably shouldn't be an assert
         assert!(trimmed.len() == 6);
 
         let r = u8::from_str_radix(&trimmed[0..2], 16)?;
@@ -86,24 +88,23 @@ struct Console {
 
 static mut CONSOLE: Option<Console> = None;
 
-const ENABLE_PROCESSED_OUTPUT: u32 = 0b00001;
-const ENABLE_WRAP_AT_EOL_OUTPUT: u32 = 0b00010;
-const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0b00100;
-const DISABLE_NEWLINE_AUTO_RETURN: u32 = 0b01000;
-const ENABLE_LVB_GRID_WORLDWIDE: u32 = 0b10000;
-
 pub fn init() {
     unsafe {
         let std_out_handle = GetStdHandle(STD_OUTPUT_HANDLE);
 
-        assert!(!std_out_handle.is_null() && !std_out_handle.is_null());
+        assert!(!std_out_handle.is_null());
 
-        let mut mode = 0;
+        let mut actual_mode = 0;
 
-        assert!(GetConsoleMode(std_out_handle, &mut mode) == 1);
+        assert!(GetConsoleMode(std_out_handle, &mut actual_mode) == 1);
 
-        if mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING == 0 {
-            assert!(SetConsoleMode(std_out_handle, ENABLE_VIRTUAL_TERMINAL_PROCESSING) == 1);
+        let wanted_mode = ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_PROCESSED_OUTPUT;
+
+        #[allow(clippy::collapsible_if)]
+        if actual_mode & wanted_mode != wanted_mode {
+            if SetConsoleMode(std_out_handle, wanted_mode) != TRUE {
+                println!("WARNING: Failed to set virtual processing mode. Terminal emulator doesn't support ANSI sequences.");
+            }
         }
 
         CONSOLE = Some(Console { std_out_handle })
@@ -130,7 +131,7 @@ pub fn write(message: impl Into<String>) -> u32 {
 }
 
 pub fn writeln(message: impl Into<String>) -> u32 {
-    write(format!("{}\n", message.into()))
+    write(format!("{}\r\n", message.into()))
 }
 
 pub struct Text {
