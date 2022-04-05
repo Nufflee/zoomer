@@ -57,10 +57,16 @@ uniform vec2 u_HighlighterRadius;
 void main() {
     color = texture(u_Texture, v_TexCoord);
 
-    vec2 distance = pow(v_TexCoord - u_MousePosition, vec2(2.0)) / pow(u_HighlighterRadius, vec2(2.0));
+    // NOTE: This branch is statically uniform hence no divergence should happen and performance should be identical to 2 separate shaders
+    if (u_HighlighterOn) {
+        // Use the ellipse formula to create the highlighter circle due to varying aspect ratio (x^2/a^2 + y^2/b^2 = 1)
+        vec2 distance = pow(v_TexCoord - u_MousePosition, vec2(2.0)) / pow(u_HighlighterRadius, vec2(2.0));
 
-    if (distance.x + distance.y > 1.0) {
-        color *= vec4(0.5, 0.5, 0.5, 1.0);
+        if (distance.x + distance.y < 1.0) {
+            color = mix(color, vec4(1.0, 1.0, 1.0, 1.0), 0.035);
+        } else {
+            color = mix(color, vec4(0.0, 0.0, 0.0, 1.0), 0.55);
+        }
     }
 }
 "#;
@@ -82,6 +88,7 @@ pub struct Zoomer {
 
     view_matrix_uniform: GLint,
     highlighter_radius_uniform: GLint,
+    highlighter_on_uniform: GLint,
     mouse_position_uniform: GLint,
 
     debug_window_is_open: bool,
@@ -113,6 +120,7 @@ impl Zoomer {
 
             view_matrix_uniform: -1,
             highlighter_radius_uniform: -1,
+            highlighter_on_uniform: -1,
             mouse_position_uniform: -1,
 
             debug_window_is_open: false,
@@ -435,6 +443,10 @@ impl Zoomer {
             unsafe { glGetUniformLocation(shader_program, c_str_ptr!("u_HighlighterRadius")) };
         assert!(self.highlighter_radius_uniform != -1);
 
+        self.highlighter_on_uniform =
+            unsafe { glGetUniformLocation(shader_program, c_str_ptr!("u_HighlighterOn")) };
+        assert!(self.highlighter_on_uniform != -1);
+
         unsafe {
             glUseProgram(shader_program);
             glUniform2fv(
@@ -627,6 +639,15 @@ impl Zoomer {
 
         if key == b'C' {
             self.highlighter.set_enabled(!self.highlighter.is_enabled());
+
+            unsafe {
+                glUseProgram(self.shader_program_id);
+                glUniform1i(
+                    self.highlighter_on_uniform,
+                    self.highlighter.is_enabled() as i32,
+                );
+                glUseProgram(0);
+            }
         }
     }
 
