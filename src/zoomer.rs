@@ -62,10 +62,11 @@ void main() {
         // Use the ellipse formula to create the highlighter circle due to varying aspect ratio (x^2/a^2 + y^2/b^2 = 1)
         vec2 distance = pow(v_TexCoord - u_MousePosition, vec2(2.0)) / pow(u_HighlighterRadius, vec2(2.0));
 
+        // Use .rgb so we don't touch the alpha component.
         if (distance.x + distance.y < 1.0) {
-            color = mix(color, vec4(1.0, 1.0, 1.0, 1.0), 0.035);
+            color.rgb = mix(color.rgb, vec3(1.0, 1.0, 1.0), 0.035);
         } else {
-            color = mix(color, vec4(0.0, 0.0, 0.0, 1.0), 0.55);
+            color.rgb = mix(color.rgb, vec3(0.0, 0.0, 0.0), 0.55);
         }
     }
 }
@@ -489,6 +490,12 @@ impl Zoomer {
 
             glBindTexture(GL_TEXTURE_2D, 0);
         }
+
+        unsafe {
+            glEnable(GL_BLEND);
+
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
     }
 
     fn init_imgui(&mut self, window: HWND) {
@@ -537,8 +544,7 @@ impl Zoomer {
             (monitor.x.min(min_start.0), monitor.y.min(min_start.1))
         });
 
-        let width = monitors.iter().fold(0, |agg, monitor| monitor.width + agg);
-
+        let width: u32 = monitors.iter().map(|monitor| monitor.width).sum();
         let height = monitors.iter().map(|monitor| monitor.height).max().unwrap();
 
         let timer = std::time::Instant::now();

@@ -103,6 +103,11 @@ pub const GL_DEBUG_SEVERITY_NOTIFICATION: GLenum = 0x826B;
 
 // glEnable
 pub const GL_DEBUG_OUTPUT_SYNCHRONOUS: GLenum = 0x8242;
+pub const GL_BLEND: GLenum = 0x0BE2;
+
+// glBlendFunc
+pub const GL_SRC_ALPHA: GLenum = 0x0302;
+pub const GL_ONE_MINUS_SRC_ALPHA: GLenum = 0x0303;
 
 pub fn shader_type_to_str(type_: GLenum) -> &'static str {
     match type_ {
@@ -165,6 +170,9 @@ extern "C" {
     pub fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei);
     // OpenGL 1.1
     pub fn glDrawElements(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const GLvoid);
+
+    // OpenGL 1.0
+    pub fn glBlendFunc(sfactor: GLenum, dfactor: GLenum);
 }
 
 // This should only be used for OpenGL 1.2 and greater functions. Again, no one knows why.

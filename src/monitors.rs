@@ -10,8 +10,8 @@ use winapi::{
 pub struct Monitor {
     pub x: i32,
     pub y: i32,
-    pub width: i32,
-    pub height: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 unsafe extern "system" fn monitor_enum_proc(
@@ -26,8 +26,8 @@ unsafe extern "system" fn monitor_enum_proc(
     monitors.push(Monitor {
         x: rect.left,
         y: rect.top,
-        width: rect.right - rect.left,
-        height: rect.bottom - rect.top,
+        width: (rect.right - rect.left) as u32,
+        height: (rect.bottom - rect.top) as u32,
     });
 
     TRUE
