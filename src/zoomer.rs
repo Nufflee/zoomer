@@ -1,10 +1,10 @@
 use std::backtrace::Backtrace;
 use std::ffi::c_void;
-use std::fs;
 use std::{
     ffi::{CStr, CString},
     mem::{size_of, size_of_val},
 };
+use std::{fs, ptr};
 
 use crate::camera::Camera;
 use crate::ffi::c_str_ptr;
@@ -187,9 +187,10 @@ impl Zoomer {
             dummy_context
         };
 
-        if !is_wgl_extension_supported(hdc, "WGL_ARB_create_context_profile") {
-            panic!("`WGL_ARB_create_context_profile` extension not supported");
-        }
+        assert!(
+            is_wgl_extension_supported(hdc, "WGL_ARB_create_context_profile"),
+            "`WGL_ARB_create_context_profile` extension not supported"
+        );
 
         #[rustfmt::skip]
         let attribs = [
@@ -218,7 +219,7 @@ impl Zoomer {
         assert!(!version.is_null());
 
         println!("OpenGL version: {}", unsafe {
-            CStr::from_ptr(version as *const i8).to_str().unwrap()
+            CStr::from_ptr(version.cast()).to_str().unwrap()
         });
 
         unsafe {
@@ -231,6 +232,7 @@ impl Zoomer {
         }
     }
 
+    // TODO: clippy: this function has too many lines (211/100)
     fn init_render_env(&mut self) {
         #[rustfmt::skip]
         let vertices: [Vec3; 4] = [
@@ -294,7 +296,7 @@ impl Zoomer {
                     glBufferData(
                         GL_ARRAY_BUFFER,
                         size_of_val(&vertices) as u32,
-                        vertices.as_ptr() as *const GLvoid,
+                        vertices.as_ptr().cast(),
                         GL_STATIC_DRAW,
                     );
 
@@ -314,7 +316,7 @@ impl Zoomer {
                     glBufferData(
                         GL_ARRAY_BUFFER,
                         size_of_val(&colors) as u32,
-                        colors.as_ptr() as *const GLvoid,
+                        colors.as_ptr().cast(),
                         GL_STATIC_DRAW,
                     );
 
@@ -334,7 +336,7 @@ impl Zoomer {
                     glBufferData(
                         GL_ARRAY_BUFFER,
                         size_of_val(&uvs) as u32,
-                        uvs.as_ptr() as *const GLvoid,
+                        uvs.as_ptr().cast(),
                         GL_STATIC_DRAW,
                     );
 
@@ -354,7 +356,7 @@ impl Zoomer {
                     glBufferData(
                         GL_ELEMENT_ARRAY_BUFFER,
                         size_of_val(&indices) as u32,
-                        indices.as_ptr() as *const GLvoid,
+                        indices.as_ptr().cast(),
                         GL_STATIC_DRAW,
                     );
                 }
@@ -364,7 +366,7 @@ impl Zoomer {
             glBindVertexArray(0);
         }
 
-        fn compile_shader_source(source: CString, type_: GLenum) -> GLuint {
+        fn compile_shader_source(source: &CString, type_: GLenum) -> GLuint {
             unsafe {
                 let shader = glCreateShader(type_);
 
@@ -372,11 +374,7 @@ impl Zoomer {
                 glCompileShader(shader);
 
                 let mut success = true;
-                glGetShaderiv(
-                    shader,
-                    GL_COMPILE_STATUS,
-                    &mut success as *mut _ as *mut GLint,
-                );
+                glGetShaderiv(shader, GL_COMPILE_STATUS, ptr::addr_of_mut!(success).cast());
 
                 if !success {
                     let mut info_log = vec![0; 512];
@@ -385,7 +383,7 @@ impl Zoomer {
                         shader,
                         512,
                         std::ptr::null_mut(),
-                        info_log.as_mut_ptr() as *mut GLchar,
+                        info_log.as_mut_ptr().cast(),
                     );
 
                     panic!(
@@ -401,12 +399,13 @@ impl Zoomer {
 
         let shader_program = {
             let vertex_shader =
-                compile_shader_source(CString::new(VERTEX_SHADER).unwrap(), GL_VERTEX_SHADER);
+                compile_shader_source(&CString::new(VERTEX_SHADER).unwrap(), GL_VERTEX_SHADER);
             let fragment_shader =
-                compile_shader_source(CString::new(FRAGMENT_SHADER).unwrap(), GL_FRAGMENT_SHADER);
+                compile_shader_source(&CString::new(FRAGMENT_SHADER).unwrap(), GL_FRAGMENT_SHADER);
 
             unsafe {
-                let mut success = false;
+                // NOTE: This is an `i32` for alignment purposes. Using a `bool` with alignment of 1 could lead to an unaligned write as `glGetProgramiv` expects an `i32*`.
+                let mut success: i32 = 0;
 
                 let shader_program = glCreateProgram();
 
@@ -417,10 +416,10 @@ impl Zoomer {
                 glGetProgramiv(
                     shader_program,
                     GL_LINK_STATUS,
-                    &mut success as *mut _ as *mut GLint,
+                    ptr::addr_of_mut!(success).cast(),
                 );
 
-                if !success {
+                if success == 0 {
                     // TODO: Print the linker error log
                     eprintln!("Failed to link the shader program!");
                 }
@@ -485,7 +484,7 @@ impl Zoomer {
                 0,
                 GL_RGBA as GLenum,
                 GL_UNSIGNED_BYTE,
-                screenshot.take_pixel_bytes().as_ptr() as *const _ as *const GLvoid,
+                screenshot.take_pixel_bytes().as_ptr().cast(),
             );
 
             glBindTexture(GL_TEXTURE_2D, 0);
@@ -510,20 +509,19 @@ impl Zoomer {
         let imgui = self.imgui.as_mut().unwrap();
 
         let maybe_font_data = fs::read("C:\\Windows\\Fonts\\FiraCode-Regular.ttf").ok();
-        let font = if let Some(ref font_data) = maybe_font_data {
-            FontSource::TtfData {
-                data: font_data,
-                size_pixels: 19.0,
-                config: None,
-            }
-        } else {
-            FontSource::DefaultFontData {
+        let font = maybe_font_data.as_ref().map_or_else(
+            || FontSource::DefaultFontData {
                 config: Some(FontConfig {
                     size_pixels: 19.0,
                     ..Default::default()
                 }),
-            }
-        };
+            },
+            |font_data| FontSource::TtfData {
+                data: font_data,
+                size_pixels: 19.0,
+                config: None,
+            },
+        );
 
         imgui.fonts().add_font(&[font]);
         imgui.set_ini_filename(None);
@@ -580,7 +578,7 @@ impl Zoomer {
         }
     }
 
-    /// Converts from screen pixel space ([0, client_width] x [0, client_height]) to normalized screen coordinates or NDC ([-1, 1] x [-1, 1])
+    /// Converts from screen pixel space ([0, `client_width`] x [0, `client_height`]) to normalized screen coordinates or NDC ([-1, 1] x [-1, 1])
     pub fn pixel_to_screen_space(&self, pixel_coords: Vec2) -> Vec2 {
         vec2(
             pixel_coords.x / self.client_width as f32 * 2.0 - 1.0,
@@ -823,14 +821,14 @@ unsafe extern "C" fn gl_message_callback(
     message: *const GLchar,
     _user_param: *mut GLvoid,
 ) {
+    use console::{Color, SimpleColor};
+
     if severity == GL_DEBUG_SEVERITY_NOTIFICATION {
         return;
     }
 
     let message = CStr::from_ptr(message);
     let message = message.to_string_lossy();
-
-    use console::{Color, SimpleColor};
 
     fn severity_to_color(severity: GLenum) -> SimpleColor {
         match severity {

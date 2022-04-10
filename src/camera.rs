@@ -17,7 +17,7 @@ pub struct Camera {
 
 impl Camera {
     /// Creates a new camera.
-    /// - `zoom_range`: the min and max value of the zoom_factor
+    /// - `zoom_range`: the min and max value of the `zoom_factor`
     /// - `position_range`: the symmetric range of the position in world space (`±position_range.x` on x axis and `±position_range.y` on y axis)
     pub fn new(zoom_range: RangeInclusive<f32>, position_range: Vec2) -> Self {
         const LENGTH: f32 = 0.5;

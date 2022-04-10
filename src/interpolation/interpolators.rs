@@ -11,7 +11,7 @@ pub struct ExponentialSmoothing<T> {
 }
 
 impl<T> ExponentialSmoothing<T> {
-    /// Create a new exponential smoothing interpolator (https://en.wikipedia.org/wiki/Exponential_smoothing, http://www.viniciusgraciano.com/blog/exponential-smoothing/).
+    /// Create a new exponential smoothing interpolator (<https://en.wikipedia.org/wiki/Exponential_smoothing>, <http://www.viniciusgraciano.com/blog/exponential-smoothing/>).
     /// - `length_sec`: The length of the interpolation in seconds.
     /// - `exp_rate`: The exponential rate of smoothing (10^x).
     pub fn new(length_sec: T, exp_rate: T) -> Self {

@@ -12,7 +12,7 @@ mod imgui_impl;
 mod interpolation;
 mod monitors;
 
-use std::time::Instant;
+use std::{ptr, time::Instant};
 
 use winapi::{
     shared::{
@@ -58,7 +58,7 @@ fn main() {
     let window = unsafe {
         CreateWindowExA(
             0,
-            std::mem::transmute(class as usize),
+            class as usize as *const i8,
             c_str_ptr!("Zoomer"),
             WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT,
@@ -94,7 +94,7 @@ fn main() {
 
     // Store a pointer to the zoomer object in the window so that we can access it from the `window_proc`.
     unsafe {
-        SetWindowLongPtrA(window, GWLP_USERDATA, &mut zoomer as *mut _ as isize);
+        SetWindowLongPtrA(window, GWLP_USERDATA, ptr::addr_of_mut!(zoomer) as isize);
     }
 
     // Enable V-Sync. It seems like this is the default, but just in case.

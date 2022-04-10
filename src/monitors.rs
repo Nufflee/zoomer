@@ -1,3 +1,5 @@
+use std::ptr;
+
 use winapi::{
     shared::{
         minwindef::{BOOL, LPARAM, TRUE},
@@ -41,7 +43,7 @@ pub fn enumerate() -> Vec<Monitor> {
             std::ptr::null_mut(),
             std::ptr::null(),
             Some(monitor_enum_proc),
-            &mut monitors as *mut _ as isize,
+            ptr::addr_of_mut!(monitors) as isize,
         );
     }
 

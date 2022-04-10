@@ -47,17 +47,18 @@ pub enum SimpleColor {
     Default,
 }
 
+#[derive(Clone, Copy)]
 pub enum Color {
     Simple(SimpleColor),
     Extended { r: u8, g: u8, b: u8 },
 }
 
 impl Color {
-    pub fn to_string(&self, is_background: bool) -> String {
+    pub fn to_string(self, is_background: bool) -> String {
         let offset = if is_background { 10 } else { 0 };
 
         match self {
-            Color::Simple(color) => (*color as u8 + offset).to_string(),
+            Color::Simple(color) => (color as u8 + offset).to_string(),
             Color::Extended { r, g, b } => format!("{};2;{};{};{}", (38 + offset), r, g, b),
         }
     }
@@ -72,7 +73,7 @@ impl Color {
         let g = u8::from_str_radix(&trimmed[2..4], 16)?;
         let b = u8::from_str_radix(&trimmed[4..6], 16)?;
 
-        Ok(Color::Extended { r, g, b })
+        Ok(Self::Extended { r, g, b })
     }
 }
 
@@ -107,7 +108,7 @@ pub fn init() {
             }
         }
 
-        CONSOLE = Some(Console { std_out_handle })
+        CONSOLE = Some(Console { std_out_handle });
     }
 }
 
@@ -120,7 +121,7 @@ pub fn write(message: impl Into<String>) -> u32 {
     unsafe {
         WriteConsoleA(
             CONSOLE.as_ref().unwrap().std_out_handle,
-            cstr.as_ptr() as *const c_void,
+            cstr.as_ptr().cast::<c_void>(),
             message_slice.len().try_into().unwrap(),
             &mut chars_written,
             std::ptr::null_mut(),

@@ -1,9 +1,8 @@
-use std::mem::size_of;
+use std::{mem::size_of, ptr};
 
 use num_traits::PrimInt;
 use winapi::{
-    ctypes::c_void,
-    shared::windef::{HGDIOBJ, HWND},
+    shared::windef::HWND,
     um::{
         wingdi::*,
         winnt::HANDLE,
@@ -62,7 +61,7 @@ pub fn take_screenshot(
         let bitmap_handle = CreateCompatibleBitmap(window_dc, width as i32, height as i32);
         assert!(!bitmap_handle.is_null());
 
-        let ret = SelectObject(memory_dc, bitmap_handle as HGDIOBJ);
+        let ret = SelectObject(memory_dc, bitmap_handle.cast());
         assert!(!ret.is_null() && ret != HGDI_ERROR);
 
         let ret = BitBlt(
@@ -83,7 +82,7 @@ pub fn take_screenshot(
         let ret = GetObjectA(
             bitmap_handle as HANDLE,
             size_of::<BITMAP>() as i32,
-            &mut bitmap as *mut _ as HANDLE,
+            ptr::addr_of_mut!(bitmap).cast(),
         );
         assert!(ret != 0);
 
@@ -114,7 +113,7 @@ pub fn take_screenshot(
             bitmap_handle,
             0,
             height as u32,
-            pixel_bytes.as_mut_ptr() as *mut c_void,
+            pixel_bytes.as_mut_ptr().cast(),
             &mut bitmap_info,
             DIB_RGB_COLORS,
         );
@@ -122,7 +121,7 @@ pub fn take_screenshot(
 
         ReleaseDC(handle, window_dc);
         DeleteDC(memory_dc);
-        DeleteObject(bitmap_handle as *mut c_void);
+        DeleteObject(bitmap_handle.cast());
 
         // Convert from BGRA to RGBA.
         let padding_per_row = stride - width * Screenshot::BYTES_PER_PIXEL;
