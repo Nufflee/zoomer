@@ -6,8 +6,17 @@ This applications interacts with Win32 API and OpenGL directly, without using an
 
 ## > running
 
-Note: Nightly Rust is currently required.
+Note: Nightly Rust is currently required due to the usage of `backtrace` feature.
 
 ```sh
 $ cargo run --release
 ```
+
+## > usage
+| Input                          | Description                        |
+| ------------------------------ | ---------------------------------- |
+| Drag with Left Mouse button    | Pan around                         |
+| Scroll Wheel                   | Zoom in and out                    |
+| <kbd>C</kbd>                   | Toggle the highlighter             |
+| <kbd>Ctrl</kbd> + Scroll Wheel | Change the size of the highlighter |
+| <kbd>F2</kbd>                  | Toggle debug UI                    |
