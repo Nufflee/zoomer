@@ -16,7 +16,7 @@ use std::{ptr, time::Instant};
 
 use winapi::{
     shared::{
-        minwindef::*,
+        minwindef::{DWORD, HIWORD, LOWORD, LPARAM, LRESULT, WPARAM},
         windef::{HWND, POINT, RECT},
         windowsx::{GET_X_LPARAM, GET_Y_LPARAM},
         winerror::S_OK,
@@ -100,12 +100,15 @@ fn main() {
     // Enable V-Sync. It seems like this is the default, but just in case.
     unsafe { wglSwapIntervalEXT(1) };
 
+    unsafe {
+        RegisterHotKey(window, 0, MOD_ALT as u32, 'A' as u32);
+        ShowWindow(window, SW_SHOW);
+    }
+
     let mut message = MSG::default();
     let mut dt_timer = Instant::now();
 
     unsafe {
-        ShowWindow(window, SW_SHOW);
-
         'main: loop {
             while PeekMessageA(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
                 if message.message == WM_QUIT {
@@ -198,6 +201,9 @@ unsafe extern "system" fn window_proc(
             let key = w_param as u8;
 
             zoomer.on_key_down(key);
+        }
+        WM_HOTKEY => {
+            zoomer.on_hotkey();
         }
         WM_DESTROY => {
             PostQuitMessage(0);

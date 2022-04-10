@@ -16,9 +16,13 @@ use crate::{gl::*, monitors};
 
 use imgui::{Condition, FontConfig, FontSource};
 use nalgebra_glm::{vec2, vec3, vec4, Mat4, Vec2, Vec3};
+use winapi::um::winuser::{SetForegroundWindow, ShowWindow, SW_HIDE, SW_SHOW, VK_ESCAPE};
 use winapi::{
     shared::windef::{HDC, HWND},
-    um::{wingdi::*, winuser::*},
+    um::{
+        wingdi::*,
+        winuser::{GetDC, VK_F2},
+    },
 };
 
 const VERTEX_SHADER: &str = r#"
@@ -78,9 +82,12 @@ pub struct Zoomer {
     pub client_width: u32,
     pub client_height: u32,
 
+    window: Option<HWND>,
     hdc: Option<HDC>,
     imgui: Option<imgui::Context>,
     screenshot: Option<Screenshot>,
+    /// Whether the zoomer window is currently open and showing.
+    is_open: bool,
 
     vao_id: GLuint,
     texture_id: GLuint,
@@ -110,9 +117,11 @@ impl Zoomer {
             client_width: 0,
             client_height: 0,
 
+            window: None,
             hdc: None,
             imgui: None,
             screenshot: None,
+            is_open: false,
 
             vao_id: 0,
             texture_id: 0,
@@ -136,17 +145,19 @@ impl Zoomer {
     }
 
     pub fn init(&mut self, window: HWND, client_width: i32, client_height: i32) {
-        self.take_screenshot();
+        self.screenshot = Some(self.take_screenshot());
 
         self.client_width = client_width as u32;
         self.client_height = client_height as u32;
 
+        self.window = Some(window);
         self.hdc = Some(unsafe { GetDC(window) });
 
         self.camera = Some(Camera::new(
             0.25..=500.0,
             vec2(1.0, self.aspect_ratio_ratio()),
         ));
+        self.is_open = true;
 
         self.create_opengl_context();
         self.init_render_env();
@@ -178,8 +189,8 @@ impl Zoomer {
 
         assert!(unsafe { SetPixelFormat(hdc, format_index, &format_descriptor) } != 0);
 
-        // Reference: https://github.com/glfw/glfw/blob/master/src/wgl_context.c#L535
         // Create and bind a dummy OpenGL context so we can load extension functions.
+        // Reference: https://github.com/glfw/glfw/blob/4cb36872a5fe448c205d0b46f0e8c8b57530cfe0/src/wgl_context.c#L535
         let dummy_context = unsafe {
             let dummy_context = wglCreateContext(hdc);
             wglMakeCurrent(hdc, dummy_context);
@@ -447,16 +458,6 @@ impl Zoomer {
             unsafe { glGetUniformLocation(shader_program, c_str_ptr!("u_HighlighterOn")) };
         assert!(self.highlighter_on_uniform != -1);
 
-        unsafe {
-            glUseProgram(shader_program);
-            glUniform2fv(
-                self.highlighter_radius_uniform,
-                1,
-                vec2(f32::INFINITY, f32::INFINITY).as_ptr(),
-            );
-            glUseProgram(0);
-        }
-
         let texture = unsafe {
             let mut texture = 0;
 
@@ -467,28 +468,7 @@ impl Zoomer {
 
         self.texture_id = texture;
 
-        unsafe {
-            glBindTexture(GL_TEXTURE_2D, texture);
-
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-            let screenshot = self.screenshot.as_mut().unwrap();
-
-            glTexImage2D(
-                GL_TEXTURE_2D,
-                0,
-                GL_RGBA,
-                screenshot.width(),
-                screenshot.height(),
-                0,
-                GL_RGBA as GLenum,
-                GL_UNSIGNED_BYTE,
-                screenshot.take_pixel_bytes().as_ptr().cast(),
-            );
-
-            glBindTexture(GL_TEXTURE_2D, 0);
-        }
+        self.upload_screenshot_to_gpu();
 
         unsafe {
             glEnable(GL_BLEND);
@@ -533,7 +513,7 @@ impl Zoomer {
         self.debug_window_is_open = true;
     }
 
-    fn take_screenshot(&mut self) {
+    fn take_screenshot(&mut self) -> Screenshot {
         let monitors = monitors::enumerate();
 
         assert!(!monitors.is_empty(), "no monitors found");
@@ -547,26 +527,45 @@ impl Zoomer {
 
         let timer = std::time::Instant::now();
 
-        self.screenshot = Some(take_screenshot(
+        let screenshot = take_screenshot(
             std::ptr::null_mut(),
             start_x,
             start_y,
             width as u32,
             height as u32,
-        ));
-        let screenshot = self.screenshot.as_ref().unwrap();
+        );
 
         println!(
             "Screenshot taken in {} seconds",
             timer.elapsed().as_secs_f32()
         );
 
-        println!(
-            "Screenshot size: {}x{} (AR = {})",
-            screenshot.width(),
-            screenshot.height(),
-            screenshot.width() as f32 / screenshot.height() as f32
-        );
+        screenshot
+    }
+
+    fn upload_screenshot_to_gpu(&mut self) {
+        let screenshot = self.screenshot.as_mut().unwrap();
+
+        unsafe {
+            glBindTexture(GL_TEXTURE_2D, self.texture_id);
+
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+            glTexImage2D(
+                GL_TEXTURE_2D,
+                0,
+                GL_RGBA,
+                screenshot.width(),
+                screenshot.height(),
+                0,
+                GL_RGBA as GLenum,
+                GL_UNSIGNED_BYTE,
+                screenshot.take_pixel_bytes().as_ptr().cast(),
+            );
+
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
     }
 
     pub fn on_resize(&mut self, new_client_width: u16, new_client_height: u16) {
@@ -602,6 +601,10 @@ impl Zoomer {
 
     pub fn on_left_mouse_down(&mut self, x: i32, y: i32) {
         self.last_mouse_screen_pos = self.pixel_to_screen_space(vec2(x as f32, y as f32));
+    }
+
+    pub fn on_left_mouse_up(&mut self) {
+        self.camera.as_mut().unwrap().clamp_me_daddy();
     }
 
     pub fn on_mouse_move(&mut self, x: i32, y: i32, left_mouse_down: bool) {
@@ -653,6 +656,31 @@ impl Zoomer {
                 glUseProgram(0);
             }
         }
+
+        if key == VK_ESCAPE as u8 {
+            self.is_open = false;
+
+            unsafe { ShowWindow(self.window.unwrap(), SW_HIDE) };
+        }
+    }
+
+    pub fn on_hotkey(&mut self) {
+        if self.is_open {
+            return;
+        }
+
+        self.screenshot = Some(self.take_screenshot());
+        self.upload_screenshot_to_gpu();
+
+        let window = self.window.unwrap();
+
+        unsafe {
+            ShowWindow(window, SW_SHOW);
+            // NOTE: This is not strictly required, but just in case.
+            SetForegroundWindow(window);
+        }
+
+        self.is_open = true;
     }
 
     pub fn screenshot_aspect_ratio(&self) -> f32 {
@@ -805,10 +833,6 @@ impl Zoomer {
     /// Whether ImGui wants to receive keyboard events instead of the application
     pub fn imgui_wants_keyboard_events(&self) -> bool {
         self.imgui.as_ref().unwrap().io().want_capture_keyboard
-    }
-
-    pub(crate) fn on_left_mouse_up(&mut self) {
-        self.camera.as_mut().unwrap().clamp_me_daddy();
     }
 }
 

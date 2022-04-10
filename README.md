@@ -15,6 +15,8 @@ $ cargo run --release
 ## > usage
 | Input                          | Description                        |
 | ------------------------------ | ---------------------------------- |
+| <kbd>Alt</kbd> + <kbd>A</kbd>  | Show the zoomer window             |
+| <kbd>Esc</kbd>                 | Hide the zoomer window             |
 | Drag with Left Mouse button    | Pan around                         |
 | Scroll Wheel                   | Zoom in and out                    |
 | <kbd>C</kbd>                   | Toggle the highlighter             |
